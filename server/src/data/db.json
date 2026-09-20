@@ -1,0 +1,760 @@
+{
+  "categories": [
+    {
+      "id": "all",
+      "name": "All Items",
+      "slug": "all",
+      "icon": "🔥"
+    },
+    {
+      "id": "bhel",
+      "name": "Bhel",
+      "slug": "bhel",
+      "icon": "🥗"
+    },
+    {
+      "id": "maggie",
+      "name": "Maggie",
+      "slug": "maggie",
+      "icon": "🍜"
+    },
+    {
+      "id": "snacks",
+      "name": "Snacks",
+      "slug": "snacks",
+      "icon": "🍿"
+    },
+    {
+      "id": "biscuits",
+      "name": "Biscuits",
+      "slug": "biscuits",
+      "icon": "🍪"
+    },
+    {
+      "id": "cooked",
+      "name": "Cooked",
+      "slug": "cooked",
+      "icon": "🥡"
+    },
+    {
+      "id": "uncooked",
+      "name": "Uncooked",
+      "slug": "uncooked",
+      "icon": "📦"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod-bhel-half",
+      "categoryId": "bhel",
+      "name": "Half Bhel",
+      "description": "Crispy puffed rice, tangy tamarind & spicy mint chutney, tossed with fresh chopped onions, tomatoes & nylon sev.",
+      "price": 35,
+      "isAvailable": true,
+      "isCooked": true,
+      "allowsSpiceCustomization": true,
+      "imageUrl": "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=600&q=80",
+      "variants": [
+        {
+          "name": "Half Bhel (Regular)",
+          "price": 35
+        }
+      ],
+      "addons": [
+        {
+          "id": "extra-sev",
+          "name": "Extra Crispy Sev",
+          "price": 5
+        },
+        {
+          "id": "extra-onion",
+          "name": "Extra Chopped Onions",
+          "price": 5
+        }
+      ],
+      "tags": [
+        "bhel",
+        "cooked",
+        "popular",
+        "snack"
+      ],
+      "updatedAt": "2026-09-15T04:52:38.990Z"
+    },
+    {
+      "id": "prod-bhel-full",
+      "categoryId": "bhel",
+      "name": "Full Bhel",
+      "description": "Hostel special full portion! Loaded crispy bhel puri with roasted peanuts, sweet-tangy chutney, coriander & generous sev topping.",
+      "price": 65,
+      "isAvailable": true,
+      "isCooked": true,
+      "allowsSpiceCustomization": true,
+      "imageUrl": "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=600&q=80",
+      "variants": [
+        {
+          "name": "Full Bhel (Loaded)",
+          "price": 65
+        }
+      ],
+      "addons": [
+        {
+          "id": "extra-sev",
+          "name": "Extra Crispy Sev",
+          "price": 5
+        },
+        {
+          "id": "extra-peanuts",
+          "name": "Roasted Spiced Peanuts",
+          "price": 10
+        }
+      ],
+      "tags": [
+        "bhel",
+        "cooked",
+        "bestseller"
+      ]
+    },
+    {
+      "id": "prod-maggie-cooked",
+      "categoryId": "maggie",
+      "name": "Cooked Maggie",
+      "description": "Piping hot 2-minute masala Maggie prepared fresh in the hostel kitchen with aromatic spices and sweet corn notes.",
+      "price": 40,
+      "isAvailable": true,
+      "isCooked": true,
+      "allowsSpiceCustomization": true,
+      "imageUrl": "https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=600&q=80",
+      "variants": [
+        {
+          "name": "Single Bowl",
+          "price": 40
+        },
+        {
+          "name": "Double Masala Bowl",
+          "price": 70
+        }
+      ],
+      "addons": [
+        {
+          "id": "extra-cheese",
+          "name": "Melted Amul Cheese Cube",
+          "price": 15
+        },
+        {
+          "id": "extra-butter",
+          "name": "Amul Butter Dollop",
+          "price": 10
+        },
+        {
+          "id": "peri-peri",
+          "name": "Peri Peri Masala Sprinkle",
+          "price": 5
+        }
+      ],
+      "tags": [
+        "maggie",
+        "cooked",
+        "bestseller",
+        "midnight-craving"
+      ]
+    },
+    {
+      "id": "prod-maggie-packet",
+      "categoryId": "maggie",
+      "name": "Maggie Packet (Raw)",
+      "description": "Original Nestle 70g Masala Maggie single pack with magic tastemaker sachet. Keep for late night kettle cooking.",
+      "price": 15,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "maggie",
+        "uncooked",
+        "essential"
+      ]
+    },
+    {
+      "id": "prod-bingo-chips",
+      "categoryId": "snacks",
+      "name": "Bingo Mad Angles",
+      "description": "Achaari Masti flavored crunchy triangle crisps. Perfect tangy punch for group study sessions.",
+      "price": 20,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "snacks",
+        "uncooked",
+        "chips"
+      ]
+    },
+    {
+      "id": "prod-lays-magic-masala",
+      "categoryId": "snacks",
+      "name": "Lay's India's Magic Masala",
+      "description": "The legendary blue pack! Spicy and flavorful wavy potato chips made with authentic Indian spices.",
+      "price": 20,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1527842891421-42eec6e703ea?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "snacks",
+        "uncooked",
+        "chips",
+        "bestseller"
+      ]
+    },
+    {
+      "id": "prod-lays-cream-onion",
+      "categoryId": "snacks",
+      "name": "Lay's American Style Cream & Onion",
+      "description": "Classic green pack! Rich sour cream and delicate herb-onion seasoning on ultra-thin crispy chips.",
+      "price": 20,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1576402187878-974f70c890a5?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "snacks",
+        "uncooked",
+        "chips"
+      ]
+    },
+    {
+      "id": "prod-lays-sizzling-hot",
+      "categoryId": "snacks",
+      "name": "Lay's Sizzling Hot",
+      "description": "Fiery chili crunch with an intense heat kick. Only for true spice warriors in the hostel.",
+      "price": 20,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1621447504864-d8686e12698c?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "snacks",
+        "uncooked",
+        "spicy"
+      ]
+    },
+    {
+      "id": "prod-parle-g",
+      "categoryId": "biscuits",
+      "name": "Parle-G Gold Biscuit",
+      "description": "Hostel chai’s best friend! Golden baked glucose biscuits loaded with energy and nostalgia.",
+      "price": 10,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "biscuits",
+        "uncooked",
+        "classic"
+      ]
+    },
+    {
+      "id": "prod-oreo",
+      "categoryId": "biscuits",
+      "name": "Oreo Vanilla Creme",
+      "description": "Rich dark chocolate cookies sandwiching sweet vanilla cream. Twist, lick, dunk in milk.",
+      "price": 30,
+      "isAvailable": true,
+      "isCooked": false,
+      "allowsSpiceCustomization": false,
+      "imageUrl": "https://images.unsplash.com/photo-1582293041079-7814c2f12063?auto=format&fit=crop&w=600&q=80",
+      "variants": [],
+      "addons": [],
+      "tags": [
+        "biscuits",
+        "uncooked",
+        "sweet"
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "id": "bl-ord-1789448212087",
+      "orderNumber": "#BL-6877",
+      "customerName": "Aaditya Yadav",
+      "customerPhone": "9876543210",
+      "hostel": "GH4",
+      "roomNumber": "312",
+      "deliveryType": "room_delivery",
+      "deliveryNotes": "Please call when you reach the wing.",
+      "items": [
+        {
+          "productId": "prod-bhel-half",
+          "productName": "Half Bhel",
+          "variant": null,
+          "spiceLevel": "spicy",
+          "addons": [],
+          "quantity": 1,
+          "priceAtOrder": 35,
+          "itemTotal": 35
+        }
+      ],
+      "subtotal": 35,
+      "deliveryFee": 10,
+      "packagingFee": 5,
+      "total": 50,
+      "status": "cancelled",
+      "etaMinutes": 15,
+      "createdAt": "2026-09-15T04:56:52.087Z",
+      "updatedAt": "2026-09-15T05:03:52.209Z"
+    },
+    {
+      "id": "bl-ord-1789447958943",
+      "orderNumber": "#BL-3903",
+      "customerName": "Aaditya Yadav",
+      "customerPhone": "9876543210",
+      "hostel": "GH4",
+      "roomNumber": "312",
+      "deliveryType": "room_delivery",
+      "deliveryNotes": "Call when arrived at 3rd floor",
+      "items": [
+        {
+          "productId": "prod-bhel-full",
+          "productName": "Full Bhel",
+          "variant": "Full Bhel (Loaded)",
+          "spiceLevel": "spicy",
+          "addons": [
+            "Extra Crispy Sev"
+          ],
+          "quantity": 2,
+          "priceAtOrder": 70,
+          "itemTotal": 140
+        }
+      ],
+      "subtotal": 140,
+      "deliveryFee": 0,
+      "packagingFee": 5,
+      "total": 145,
+      "status": "preparing",
+      "etaMinutes": 15,
+      "createdAt": "2026-09-15T04:52:38.943Z",
+      "updatedAt": "2026-09-15T04:52:38.957Z"
+    },
+    {
+      "id": "bl-ord-1789447640956",
+      "orderNumber": "#BL-6708",
+      "customerName": "Aaditya Yadav",
+      "customerPhone": "9876543210",
+      "hostel": "GH4",
+      "roomNumber": "312",
+      "deliveryType": "room_delivery",
+      "deliveryNotes": "Call when arrived at 3rd floor",
+      "items": [
+        {
+          "productId": "prod-bhel-full",
+          "productName": "Full Bhel",
+          "variant": "Full Bhel (Loaded)",
+          "spiceLevel": "spicy",
+          "addons": [
+            "Extra Crispy Sev"
+          ],
+          "quantity": 2,
+          "priceAtOrder": 70,
+          "itemTotal": 140
+        }
+      ],
+      "subtotal": 140,
+      "deliveryFee": 0,
+      "packagingFee": 5,
+      "total": 145,
+      "status": "preparing",
+      "etaMinutes": 15,
+      "createdAt": "2026-09-15T04:47:20.956Z",
+      "updatedAt": "2026-09-15T04:47:20.970Z"
+    },
+    {
+      "id": "bl-ord-1789417783609",
+      "orderNumber": "#BL-3355",
+      "customerName": "Aaditya Yadav",
+      "customerPhone": "9876543210",
+      "hostel": "GH4",
+      "roomNumber": "312",
+      "deliveryType": "room_delivery",
+      "deliveryNotes": "Call when arrived at 3rd floor",
+      "items": [
+        {
+          "productId": "prod-bhel-full",
+          "productName": "Full Bhel",
+          "variant": "Full Bhel (Loaded)",
+          "spiceLevel": "spicy",
+          "addons": [
+            "Extra Crispy Sev"
+          ],
+          "quantity": 2,
+          "priceAtOrder": 70,
+          "itemTotal": 140
+        }
+      ],
+      "subtotal": 140,
+      "deliveryFee": 0,
+      "packagingFee": 5,
+      "total": 145,
+      "status": "preparing",
+      "etaMinutes": 15,
+      "createdAt": "2026-09-14T20:29:43.609Z",
+      "updatedAt": "2026-09-14T20:29:43.622Z"
+    },
+    {
+      "id": "bl-ord-1001",
+      "orderNumber": "#BL-1001",
+      "customerName": "Aaditya Yadav",
+      "customerPhone": "9876543210",
+      "hostel": "GH4",
+      "roomNumber": "312",
+      "deliveryType": "room_delivery",
+      "deliveryNotes": "Please call when you reach 3rd floor corridor.",
+      "items": [
+        {
+          "productId": "prod-bhel-full",
+          "productName": "Full Bhel",
+          "variant": "Full Bhel (Loaded)",
+          "spiceLevel": "spicy",
+          "addons": [
+            "Extra Crispy Sev"
+          ],
+          "quantity": 1,
+          "priceAtOrder": 70,
+          "itemTotal": 70
+        },
+        {
+          "productId": "prod-maggie-cooked",
+          "productName": "Cooked Maggie",
+          "variant": "Single Bowl",
+          "spiceLevel": "spicy",
+          "addons": [
+            "Melted Amul Cheese Cube"
+          ],
+          "quantity": 1,
+          "priceAtOrder": 55,
+          "itemTotal": 55
+        }
+      ],
+      "subtotal": 125,
+      "deliveryFee": 10,
+      "packagingFee": 5,
+      "total": 140,
+      "status": "delivered",
+      "etaMinutes": 12,
+      "createdAt": "2026-09-14T20:14:07.778Z",
+      "updatedAt": "2026-09-15T05:04:07.486Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif-1789448647486-2052",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:04:07.486Z",
+      "orderId": "bl-ord-1001",
+      "title": "🎉 Order Delivered!",
+      "message": "Enjoy your meal! Cravings sorted by Bhook_Lgi.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448645290-33uh",
+      "isRead": true,
+      "createdAt": "2026-09-15T05:04:05.290Z",
+      "orderId": "bl-ord-1001",
+      "title": "🛵 Out for Delivery!",
+      "message": "Delivery partner is heading to GH4, Room 312.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448641393-fk0r",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:04:01.393Z",
+      "orderId": "bl-ord-1001",
+      "title": "✨ Order is Ready!",
+      "message": "Your food is packed and ready to be delivered to GH4!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448638176-agjw",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:58.176Z",
+      "orderId": "bl-ord-1001",
+      "title": "🍜 Order is Being Prepared!",
+      "message": "The kitchen is cooking your items fresh right now!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448632209-e0bk",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:52.209Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "❌ Order Cancelled",
+      "message": "Order #BL-6877 was cancelled. Contact kitchen if this was a mistake.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448630752-uqtv",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:50.752Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448630537-ca0i",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:50.537Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448630393-mgj6",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:50.393Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448629720-mzac",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:49.720Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448628728-mu7r",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:48.728Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448624677-olzg",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:44.677Z",
+      "orderId": "bl-ord-1001",
+      "title": "🍜 Order is Being Prepared!",
+      "message": "The kitchen is cooking your items fresh right now!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448622539-89a9",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:42.539Z",
+      "orderId": "bl-ord-1001",
+      "title": "🍜 Order is Being Prepared!",
+      "message": "The kitchen is cooking your items fresh right now!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448608284-yang",
+      "isRead": true,
+      "createdAt": "2026-09-15T05:03:28.284Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448608106-dxl8",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:28.106Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448607942-ppts",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:27.942Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448607793-n1jo",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:27.793Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448607641-65zb",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:27.641Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448606938-l69x",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:26.938Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448580646-jq3q",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:03:00.646Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448575994-kguc",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:02:55.994Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448574978-mhsz",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:02:54.978Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448573358-uo1v",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:02:53.358Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448502959-23nm",
+      "isRead": false,
+      "createdAt": "2026-09-15T05:01:42.959Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "🔥 Order Accepted!",
+      "message": "Your Bhook_Lgi order #BL-6877 has been accepted by the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789448212087-5ijf",
+      "isRead": false,
+      "createdAt": "2026-09-15T04:56:52.087Z",
+      "orderId": "bl-ord-1789448212087",
+      "title": "Order Placed! 🎉",
+      "message": "Your Bhook_Lgi order #BL-6877 is on its way to the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789447958957-r5sp",
+      "isRead": false,
+      "createdAt": "2026-09-15T04:52:38.957Z",
+      "orderId": "bl-ord-1789447958943",
+      "title": "🍜 Order is Being Prepared!",
+      "message": "The kitchen is cooking your items fresh right now!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789447958943-kdoj",
+      "isRead": false,
+      "createdAt": "2026-09-15T04:52:38.943Z",
+      "orderId": "bl-ord-1789447958943",
+      "title": "Order Placed! 🎉",
+      "message": "Your Bhook_Lgi order #BL-3903 is on its way to the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789447640971-vio5",
+      "isRead": false,
+      "createdAt": "2026-09-15T04:47:20.971Z",
+      "orderId": "bl-ord-1789447640956",
+      "title": "🍜 Order is Being Prepared!",
+      "message": "The kitchen is cooking your items fresh right now!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789447640956-e6jx",
+      "isRead": false,
+      "createdAt": "2026-09-15T04:47:20.956Z",
+      "orderId": "bl-ord-1789447640956",
+      "title": "Order Placed! 🎉",
+      "message": "Your Bhook_Lgi order #BL-6708 is on its way to the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789417783622-5kg1",
+      "isRead": false,
+      "createdAt": "2026-09-14T20:29:43.622Z",
+      "orderId": "bl-ord-1789417783609",
+      "title": "🍜 Order is Being Prepared!",
+      "message": "The kitchen is cooking your items fresh right now!",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1789417783609-29s3",
+      "isRead": false,
+      "createdAt": "2026-09-14T20:29:43.609Z",
+      "orderId": "bl-ord-1789417783609",
+      "title": "Order Placed! 🎉",
+      "message": "Your Bhook_Lgi order #BL-3355 is on its way to the kitchen.",
+      "type": "order_status"
+    },
+    {
+      "id": "notif-1",
+      "orderId": "bl-ord-1001",
+      "title": "Order Placed! 🎉",
+      "message": "Your Bhook_Lgi order #BL-1001 has been sent to the kitchen.",
+      "type": "order_status",
+      "isRead": false,
+      "createdAt": "2026-09-14T20:14:07.780Z"
+    },
+    {
+      "id": "notif-2",
+      "orderId": "bl-ord-1001",
+      "title": "Order Accepted! 🔥",
+      "message": "Kitchen accepted your order. Cooking starting shortly!",
+      "type": "order_status",
+      "isRead": false,
+      "createdAt": "2026-09-14T20:17:07.780Z"
+    },
+    {
+      "id": "notif-3",
+      "orderId": "bl-ord-1001",
+      "title": "Preparing your food 🍜",
+      "message": "Chef is preparing your spicy Bhel and Cheese Maggie.",
+      "type": "order_status",
+      "isRead": false,
+      "createdAt": "2026-09-14T20:20:07.780Z"
+    }
+  ]
+}
