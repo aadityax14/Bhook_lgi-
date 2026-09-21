@@ -45,6 +45,8 @@ export default function App() {
   const { setActiveOrderId } = useOrder();
   const { isAdminView, setIsAdminView, isMobileFrame } = useAuth();
 
+ 
+
   // Fetch products from backend
   const loadProducts = useCallback(async () => {
     try {

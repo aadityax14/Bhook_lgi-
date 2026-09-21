@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { MapPin, ShoppingBag, Bell, Shield, Smartphone, Monitor, ChevronDown } from 'lucide-react';
+import { MapPin, ShoppingBag, Bell, Shield, Smartphone, Monitor, ChevronDown, User } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
+import LoginModal from "./LoginModal";
+
+
+// import React, { useState } from "react";
+// import { MapPin, ChevronDown, ShoppingCart, User } from "lucide-react";
 
 export default function Header({ onOpenCart, onOpenNotifications, onLogoClick }) {
   const { itemsCount } = useCart();
@@ -11,6 +16,7 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
   const [showLocationModal, setShowLocationModal] = useState(false);
 
   const HOSTELS = ['GS12', 'GS11','GH1', 'GH3', 'GH4', 'Other'];
+  const [showLogin, setShowLogin] = useState(false);
 
   return (
     <>
@@ -36,14 +42,14 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
           </button>
 
           {/* Center Location Pill */}
-          <button
+           <button
             onClick={() => setShowLocationModal(true)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-yellowLight border border-brand-yellow/30 text-xs font-semibold text-brand-black hover:bg-brand-yellow/20 transition-all shadow-xs"
           >
             <MapPin className="w-3.5 h-3.5 text-brand-yellow" />
-            <span>{user.hostel}, Room {user.roomNumber}</span>
+            <span>Delivering to {user.hostel}, Room {user.roomNumber}</span>
             <ChevronDown className="w-3 h-3 text-gray-400" />
-          </button>
+          </button> 
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-2">
@@ -98,6 +104,16 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
                 </span>
               )}
             </button>
+
+            {/* sign in button */}
+              <button
+  onClick={() => setShowLogin(true)}
+  className="flex items-center gap-2 px-4 py-2 rounded-full bg-brand-yellow text-brand-black font-semibold hover:scale-105 transition-all"
+>
+  <User className="w-4 h-4" />
+  <span>Sign In</span>
+</button>
+          
           </div>
         </div>
 
@@ -165,6 +181,11 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
           </div>
         </div>
       )}
+       {showLogin && (
+      <LoginModal
+        onClose={() => setShowLogin(false)}
+      />
+    )}
     </>
   );
 }

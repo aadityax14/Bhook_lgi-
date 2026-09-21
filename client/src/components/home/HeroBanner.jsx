@@ -24,14 +24,14 @@ export default function HeroBanner() {
         </h2>
 
         {/* Supporting subtitle */}
-        <p className="mt-2 text-sm sm:text-base font-semibold text-brand-black/85 max-w-sm">
-          Your hostel cravings, sorted. Piping hot Maggie, loaded Bhel, and midnight snacks delivered right to your room door.
-        </p>
+        {/* <p className="mt-2 text-sm sm:text-base font-semibold text-brand-black/85 max-w-sm">
+          Your hostel cravings, 
+        </p> */}
 
         {/* Feature Pills */}
         <div className="mt-4 pt-3 border-t border-black/10 flex flex-wrap gap-2 text-xs font-bold text-brand-black">
           <span className="flex items-center gap-1 bg-white/70 backdrop-blur-xs px-2.5 py-1 rounded-full">
-            <Clock className="w-3 h-3 text-brand-black" /> ~15 Mins Delivery
+            <Clock className="w-3 h- text-brand-black" /> ~15 Mins Delivery
           </span>
           <span className="flex items-center gap-1 bg-white/70 backdrop-blur-xs px-2.5 py-1 rounded-full">
             🍜 Freshly Cooked

@@ -61,7 +61,7 @@ export default function AdminDashboard({ onSwitchToCustomer }) {
       console.error(err);
     }
   };
-
+ 
   // Price change action
   const handlePriceChange = async (productId) => {
     const newPriceStr = window.prompt('Enter new price for this item:');
