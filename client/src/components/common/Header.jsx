@@ -12,7 +12,7 @@ import LoginModal from "./LoginModal";
 export default function Header({ onOpenCart, onOpenNotifications, onLogoClick }) {
   const { itemsCount } = useCart();
   const { unreadCount } = useNotification();
-  const { user, updateUser, isAdminView, setIsAdminView, isMobileFrame, setIsMobileFrame } = useAuth();
+  const { user, updateUse } = useAuth();
   const [showLocationModal, setShowLocationModal] = useState(false);
 
   const HOSTELS = ['GS12', 'GS11','GH1', 'GH3', 'GH4', 'Other'];
@@ -48,24 +48,24 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
             onClick={() => setShowLocationModal(true)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-yellowLight border border-brand-yellow/30 text-xs font-semibold text-brand-black hover:bg-brand-yellow/20 transition-all shadow-xs"
           >
-            <MapPin className="w-3.5 h-3.5 text-brand-yellow" />
-            <span>Delivering to {user.hostel}, Room {user.roomNumber}</span>
-            <ChevronDown className="w-3 h-3 text-gray-400" />
+            <MapPin className="w-5 h-5 text-brand-yellow" />
+            <span > Delivering to {user.hostel}, Room {user.roomNumber}</span>
+            <ChevronDown className="w-3 h-6 text-gray-400" />
           </button> 
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-2">
             {/* Desktop / Mobile Frame Preview Switcher (on larger screens) */}
-            <button
+            {/* <button
               onClick={() => setIsMobileFrame(!isMobileFrame)}
               title={isMobileFrame ? "Switch to Full Desktop View" : "Simulate Mobile Phone Frame"}
               className="hidden md:flex p-2 rounded-xl text-gray-500 hover:text-brand-black hover:bg-gray-100 transition-colors"
             >
               {isMobileFrame ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
-            </button>
+            </button> */}
 
             {/* Admin Switcher Toggle */}
-            <button
+            {/* <button
               onClick={() => setIsAdminView(!isAdminView)}
               className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl border transition-all ${
                 isAdminView
@@ -76,17 +76,17 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
             >
               <Shield className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{isAdminView ? 'Customer App' : 'Admin'}</span>
-            </button>
+            </button> */}
 
             {/* Notifications Bell */}
             <button
               onClick={onOpenNotifications}
-              className="relative p-2 rounded-xl text-brand-black hover:bg-gray-100 transition-colors"
+              className="relative p-2 rounded-xl text-brand-black hover:bg-gray-100 transition-colors hover:rotate-6 transition-transform"
               aria-label="Notifications"
             >
-              <Bell className="w-5 h-5 text-gray-700" />
+              <Bell className="w-6 h-6 text-gray-700" />
               {unreadCount > 0 && (
-                <span className="absolute 1 top-1 right-1 w-4 h-4 bg-brand-chili text-white text-[10px] font-black rounded-full flex items-center justify-center animate-pulse">
+                <span className="absolute 1 top-1 right-1 w-4 h-4 bg-brand-chili text-white text-[10px] font-black rounded-full flex items-center justify-center animate-pulse ">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -95,10 +95,10 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
             {/* Cart Button */}
             <button
               onClick={onOpenCart}
-              className="relative flex items-center gap-2 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black px-3 py-1.5 rounded-2xl font-bold text-sm shadow-yellow-glow transition-all active:scale-95"
+              className="relative flex items-center gap-2 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black px-3 py-1.5 rounded-2xl font-bold text-sm shadow-yellow-glow transition-all active:scale-95  hover:scale-105"
               aria-label="Open Cart"
             >
-              <ShoppingBag className="w-4 h-4" />
+              <ShoppingBag className="w-6 h-6" />
               <span className="hidden xs:inline">Cart</span>
               {itemsCount > 0 && (
                 <span className="bg-brand-black text-brand-yellow text-xs font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center">

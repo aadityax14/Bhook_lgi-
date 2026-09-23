@@ -15,6 +15,7 @@ import OrderTrackingView from './components/tracking/OrderTrackingView';
 import OrdersListPage from './components/orders/OrdersListPage';
 import NotificationModal from './components/notifications/NotificationModal';
 import AdminDashboard from './components/admin/AdminDashboard';
+import AdminLogin from './components/admin/AdminLogin';
 
 import { useCart } from './context/CartContext';
 import { useOrder } from './context/OrderContext';
@@ -40,10 +41,24 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
   const { addToCart } = useCart();
   const { setActiveOrderId } = useOrder();
   const { isAdminView, setIsAdminView, isMobileFrame } = useAuth();
+  useEffect(() => {
+  const handleAdminShortcut = (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+      setShowAdminLogin(true);
+    }
+  };
+
+  window.addEventListener('keydown', handleAdminShortcut);
+
+  return () => {
+    window.removeEventListener('keydown', handleAdminShortcut);
+  };
+}, []);
 
  
 
@@ -100,6 +115,17 @@ export default function App() {
 
   // Content rendering based on current view
   const renderContent = () => {
+    if (showAdminLogin) {
+  return (
+    <AdminLogin
+      onLogin={() => {
+        setShowAdminLogin(false);
+        setIsAdminView(true);
+      }}
+      onBack={() => setShowAdminLogin(false)}
+    />
+  );
+}
     if (isAdminView) {
       return (
         <AdminDashboard
