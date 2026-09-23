@@ -17,6 +17,8 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
 
   const HOSTELS = ['GS12', 'GS11','GH1', 'GH3', 'GH4', 'Other'];
   const [showLogin, setShowLogin] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   return (
     <>
@@ -106,13 +108,52 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
             </button>
 
             {/* sign in button */}
-              <button
-  onClick={() => setShowLogin(true)}
-  className="flex items-center gap-2 px-4 py-2 rounded-full bg-brand-yellow text-brand-black font-semibold hover:scale-105 transition-all"
+ {isLoggedIn ? (
+  <div className="relative">
+    <button
+      onClick={() => setShowProfile(!showProfile)}
+      className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-yellow text-brand-black hover:scale-105 transition-all"
+    >
+      <User className="w-5 h-5" />
+    </button>
+
+    {showProfile && (
+      <div className="absolute right-0 top-12 w-52 rounded-2xl bg-white p-2 shadow-xl border border-gray-100 z-50">
+
+        <button
+          className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
+        >
+          👤 My Profile
+        </button>
+
+        <button
+          className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
+        >
+          📦 My Orders
+        </button>
+
+        <button
+  onClick={() => {
+    setIsLoggedIn(false);
+    setShowProfile(false);
+  }}
+  className="w-full rounded-xl px-4 py-3 text-left font-semibold text-red-500 hover:bg-red-50"
 >
-  <User className="w-4 h-4" />
-  <span>Sign In</span>
+  🚪 Logout
 </button>
+
+      </div>
+    )}
+  </div>
+) : (
+  <button
+    onClick={() => setShowLogin(true)}
+    className="flex items-center gap-2 px-4 py-2 rounded-full bg-brand-yellow text-brand-black font-semibold hover:scale-105 transition-all"
+  >
+    <User className="w-4 h-4" />
+    <span>Sign In</span>
+  </button>
+)}
           
           </div>
         </div>
@@ -182,10 +223,11 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
         </div>
       )}
        {showLogin && (
-      <LoginModal
-        onClose={() => setShowLogin(false)}
-      />
-    )}
+        <LoginModal
+          onClose={() => setShowLogin(false)}
+          onLogin={() => setIsLoggedIn(true)}
+        />
+      )}
     </>
   );
 }

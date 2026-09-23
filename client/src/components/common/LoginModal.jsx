@@ -1,7 +1,7 @@
 import { X, User } from "lucide-react";
 
-export default function LoginModal({ onClose }) {
-  return (
+export default function LoginModal({ onClose, onLogin }) {
+  return (  
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
 
       {/* Login Card */}
@@ -56,12 +56,15 @@ export default function LoginModal({ onClose }) {
         </div>
 
         {/* Sign In */}
-       <button
-            onClick={onClose}
-            className="mt-6 w-full rounded-xl bg-brand-yellow py-3 font-bold text-brand-black transition hover:scale-[1.02]"
-        >
-              Sign In
-        </button>
+       <button 
+  onClick={() => {
+    onLogin();
+    onClose();
+  }}
+  className="mt-6 w-full rounded-xl bg-brand-yellow py-3 font-bold text-brand-black transition hover:scale-[1.02]" 
+>
+  Sign In
+</button>
 
         {/* Sign Up */}
         <p className="mt-5 text-center text-sm text-gray-500">

@@ -30,9 +30,9 @@ export default function HeroBanner() {
 
         {/* Feature Pills */}
         <div className="mt-4 pt-3 border-t border-black/10 flex flex-wrap gap-2 text-xs font-bold text-brand-black">
-          <span className="flex items-center gap-1 bg-white/70 backdrop-blur-xs px-2.5 py-1 rounded-full">
+          {/* <span className="flex items-center gap-1 bg-white/70 backdrop-blur-xs px-2.5 py-1 rounded-full">
             <Clock className="w-3 h- text-brand-black" /> ~15 Mins Delivery
-          </span>
+          </span> */}
           <span className="flex items-center gap-1 bg-white/70 backdrop-blur-xs px-2.5 py-1 rounded-full">
             🍜 Freshly Cooked
           </span>
