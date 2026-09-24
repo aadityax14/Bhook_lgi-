@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, MapPin, Phone, User, FileText, CheckCircle2, Bike, Store, ArrowLeft } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useOrder } from '../../context/OrderContext';
@@ -19,6 +19,18 @@ export default function CheckoutModal({ isOpen, onClose, onOrderPlaced }) {
     deliveryType: 'room_delivery', // 'room_delivery' or 'pickup'
     notes: 'Please call when you reach the wing.'
   });
+
+  useEffect(() => {
+  if (isOpen) {
+    setFormData(prev => ({
+      ...prev,
+      hostel: user.hostel || 'GH4',
+      roomNumber: user.roomNumber || '312',
+      name: user.name || 'Aaditya Yadav',
+      phone: user.phone || '9876543210'
+    }));
+  }
+}, [isOpen, user.hostel, user.roomNumber, user.name, user.phone]);
 
   const [error, setError] = useState(null);
 
@@ -65,6 +77,7 @@ export default function CheckoutModal({ isOpen, onClose, onOrderPlaced }) {
     };
 
     try {
+      console.log("ORDER PAYLOAD:", orderPayload);
       const created = await placeOrder(orderPayload);
       clearCart();
       onOrderPlaced(created);

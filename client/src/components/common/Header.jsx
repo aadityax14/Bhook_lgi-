@@ -9,10 +9,10 @@ import LoginModal from "./LoginModal";
 // import React, { useState } from "react";
 // import { MapPin, ChevronDown, ShoppingCart, User } from "lucide-react";
 
-export default function Header({ onOpenCart, onOpenNotifications, onLogoClick }) {
+export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, onWorkWithBhookLgi }) {
   const { itemsCount } = useCart();
   const { unreadCount } = useNotification();
-  const { user, updateUse } = useAuth();
+  const { user, updateUser } = useAuth();
   const [showLocationModal, setShowLocationModal] = useState(false);
 
   const HOSTELS = ['GS12', 'GS11','GH1', 'GH3', 'GH4', 'Other'];
@@ -131,6 +131,16 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick })
         >
           📦 My Orders
         </button>
+
+        <button
+  onClick={() => {
+    setShowProfile(false);
+    onWorkWithBhookLgi();
+  }}
+  className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
+>
+  🚀 Work with Bhook_Lgi
+</button>
 
         <button
   onClick={() => {

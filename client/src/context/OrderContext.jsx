@@ -35,23 +35,34 @@ export function OrderProvider({ children }) {
   }, [activeOrderId]);
 
   const placeOrder = async (orderPayload) => {
-    setLoading(true);
-    try {
-      const res = await api.createOrder(orderPayload);
-      if (res && res.data) {
-        const newOrder = res.data;
-        setOrders(prev => [newOrder, ...prev]);
-        setActiveOrderId(newOrder.id);
-        return newOrder;
-      }
-      throw new Error('Failed to create order: No order data returned from server.');
-    } catch (err) {
-      console.error('Order placement failed:', err.message);
-      throw err;
-    } finally {
-      setLoading(false);
+  setLoading(true);
+
+  try {
+    console.log("1️⃣ SENDING ORDER TO API:", orderPayload);
+
+    const res = await api.createOrder(orderPayload);
+
+    console.log("2️⃣ API RESPONSE:", res);
+
+    if (res && res.data) {
+      const newOrder = res.data;
+
+      console.log("3️⃣ ORDER CREATED:", newOrder);
+
+      setOrders(prev => [newOrder, ...prev]);
+      setActiveOrderId(newOrder.id);
+
+      return newOrder;
     }
-  };
+
+    throw new Error('Failed to create order: No order data returned from server.');
+  } catch (err) {
+    console.error("❌ PLACE ORDER ERROR:", err);
+    throw err;
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {

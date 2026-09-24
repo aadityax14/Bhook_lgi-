@@ -16,14 +16,24 @@ import OrdersListPage from './components/orders/OrdersListPage';
 import NotificationModal from './components/notifications/NotificationModal';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AdminLogin from './components/admin/AdminLogin';
+import WorkWithBhookLgi from './components/work/WorkWithBhookLgi';
+import DeliveryLogin from './components/delivery/DeliveryLogin';
+import DeliveryDashboard from './components/delivery/DeliveryDashboard';
 
 import { useCart } from './context/CartContext';
 import { useOrder } from './context/OrderContext';
 import { useAuth } from './context/AuthContext';
 import { api } from './services/api';
 import { FALLBACK_PRODUCTS } from './data/fallbackProducts';
-
+import ChefDashboard from './components/chef/ChefDashboard';
 export default function App() {
+
+  const [isDeliveryView, setIsDeliveryView] = useState(false);
+  const [deliveryPartner, setDeliveryPartner] = useState(null); 
+
+  const [showWorkWithBhookLgi, setShowWorkWithBhookLgi] = useState(false);
+
+
   // Splash screen state
   const [showSplash, setShowSplash] = useState(true);
 
@@ -42,6 +52,7 @@ export default function App() {
   const [confirmedOrder, setConfirmedOrder] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [isChefView, setIsChefView] = useState(false);
 
   const { addToCart } = useCart();
   const { setActiveOrderId } = useOrder();
@@ -134,6 +145,34 @@ export default function App() {
       );
     }
 
+    if (isDeliveryView && !deliveryPartner) {
+  return (
+    <DeliveryLogin
+      onLogin={(partner) => {
+        setDeliveryPartner(partner);
+      }}
+    />
+  );
+}
+
+if (isDeliveryView && deliveryPartner) {
+  return (
+    <DeliveryDashboard
+      deliveryPartner={deliveryPartner}
+      onLogout={() => {
+        setDeliveryPartner(null);
+        setIsDeliveryView(false);
+      }}
+    />
+  );
+}
+
+    if (isChefView) {
+  return (
+    <ChefDashboard />
+  );
+}
+
     if (activeTab === 'all-orders') {
       return (
         <OrdersListPage
@@ -220,7 +259,7 @@ export default function App() {
                 />
               ))}
             </div>
-          )}
+          )}  
         </div>
       </div>
     );
@@ -253,17 +292,35 @@ export default function App() {
             </div>
           )}
 
+          <button
+  onClick={() => {
+    setIsDeliveryView(true);
+    setDeliveryPartner(null);
+  }}
+  className="fixed bottom-24 left-4 z-50 px-4 py-3 rounded-2xl bg-brand-yellow text-brand-black font-black shadow-xl"
+>
+  🛵 Delivery Login
+</button>
+
+          <button
+  onClick={() => setIsChefView(true)}
+  className="fixed bottom-24 right-4 z-50 bg-black text-white px-4 py-3 rounded-xl font-bold shadow-lg"
+>
+  👨‍🍳 Chef Panel
+</button>
+
           {/* Top Header */}
           <Header
-            onOpenCart={() => setIsCartOpen(true)}
-            onOpenNotifications={() => setIsNotificationsOpen(true)}
-            onLogoClick={() => {
-              setIsAdminView(false);
-              setActiveTab('home');
-              setActiveCategory('all');
-              setSearchQuery('');
-            }}
-          />
+  onOpenCart={() => setIsCartOpen(true)}
+  onOpenNotifications={() => setIsNotificationsOpen(true)}
+  onLogoClick={() => {
+    setIsAdminView(false);
+    setActiveTab('home');
+    setActiveCategory('all');
+    setSearchQuery('');
+  }}
+  onWorkWithBhookLgi={() => setShowWorkWithBhookLgi(true)}
+/>
 
           {/* Floating In-App Toast messages */}
           <Toast
@@ -292,6 +349,12 @@ export default function App() {
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
         />
+
+        {showWorkWithBhookLgi && (
+  <WorkWithBhookLgi
+    onClose={() => setShowWorkWithBhookLgi(false)}
+  />
+)}
 
         <CartDrawer
           isOpen={isCartOpen}
