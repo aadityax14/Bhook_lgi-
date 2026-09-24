@@ -4,12 +4,13 @@ import { useCart } from '../../context/CartContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import LoginModal from "./LoginModal";
+import MyOrdersModal from "../orders/MyOrdersModal";
 
 
 // import React, { useState } from "react";
 // import { MapPin, ChevronDown, ShoppingCart, User } from "lucide-react";
 
-export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, onWorkWithBhookLgi }) {
+export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, onWorkWithBhookLgi,  onOpenMyOrders}) {
   const { itemsCount } = useCart();
   const { unreadCount } = useNotification();
   const { user, updateUser } = useAuth();
@@ -19,6 +20,7 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, o
   const [showLogin, setShowLogin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showMyOrders, setShowMyOrders] = useState(false);
 
   return (
     <>
@@ -127,10 +129,14 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, o
         </button>
 
         <button
-          className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
-        >
-          📦 My Orders
-        </button>
+  onClick={() => {
+    setShowProfile(false);
+    onOpenMyOrders();
+  }}
+  className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
+>
+  📦 My Orders
+</button>
 
         <button
   onClick={() => {
@@ -238,6 +244,13 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, o
           onLogin={() => setIsLoggedIn(true)}
         />
       )}
+
+      {showMyOrders && (
+  <MyOrdersModal
+    isOpen={showMyOrders}
+    onClose={() => setShowMyOrders(false)}
+  />
+)}
     </>
   );
 }

@@ -313,6 +313,10 @@ if (isDeliveryView && deliveryPartner) {
           <Header
   onOpenCart={() => setIsCartOpen(true)}
   onOpenNotifications={() => setIsNotificationsOpen(true)}
+  
+    onOpenMyOrders={() => {
+    setIsAdminView(false);
+    setActiveTab('all-orders');}}
   onLogoClick={() => {
     setIsAdminView(false);
     setActiveTab('home');
