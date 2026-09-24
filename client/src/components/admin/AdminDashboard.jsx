@@ -1,587 +1,3252 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
+  CheckCircle2,
   ChefHat,
+  Edit2,
+  ImagePlus,
   Package,
   Plus,
+  RefreshCw,
+  ShoppingBag,
   Trash2,
-  Edit2
+  X,
+  Upload,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
+
 import { api } from '../../services/api';
 import { useOrder } from '../../context/OrderContext';
 
-export default function AdminDashboard({ onSwitchToCustomer }) {
-  const { orders, updateOrderStatus, fetchOrders } = useOrder();
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders' or 'products'
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [orderFilter, setOrderFilter] = useState('all');
 
-  // New product form modal state
-  const [showAddModal, setShowAddModal] = useState(false);
+// ============================================================
+// IMAGE COMPRESSION
+// ============================================================
+
+const compressImage = (file) => {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error('No image selected.'));
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Please select an image file.'));
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const img = new Image();
+
+      img.onload = () => {
+        const MAX_SIZE = 1000;
+
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Could not process image.'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedImage = canvas.toDataURL(
+          'image/jpeg',
+          0.75
+        );
+
+        resolve(compressedImage);
+      };
+
+      img.onerror = () => {
+        reject(new Error('Could not process image.'));
+      };
+
+      img.src = event.target.result;
+    };
+
+    reader.onerror = () => {
+      reject(new Error('Could not read image.'));
+    };
+
+    reader.readAsDataURL(file);
+  });
+};
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const isBhelProduct = (product) => {
+  if (!product) return false;
+
+  const name = product.name?.toLowerCase() || '';
+
+  return (
+    product.categoryId === 'bhel' ||
+    name.includes('bhel')
+  );
+};
+
+
+const isFullBhel = (product) => {
+  const name = product?.name?.toLowerCase() || '';
+
+  return name.includes('full');
+};
+
+
+const getBhelAvailableQuantity = (product, sharedQuantity) => {
+  const quantity = Number(sharedQuantity || 0);
+
+  if (isFullBhel(product)) {
+    return quantity;
+  }
+
+  return quantity * 2;
+};
+
+
+const getNormalStock = (product) => {
+  return Number(product?.stockQuantity ?? 0);
+};
+
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
+export default function AdminDashboard({
+  onBack,
+  onSwitchToCustomer,
+}) {
+  const {
+    orders,
+    updateOrderStatus,
+    fetchOrders,
+  } = useOrder();
+
+  const [activeTab, setActiveTab] = useState('orders');
+
+  const [products, setProducts] = useState([]);
+
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [stockDrafts, setStockDrafts] = useState({});
+
+  const [bhelHalfDraft, setBhelHalfDraft] = useState(null);
+
+  const [savingStockId, setSavingStockId] = useState(null);
+
+  const [savingBhelStock, setSavingBhelStock] =
+    useState(false);
+
+  const [statusSavingId, setStatusSavingId] =
+    useState(null);
+
+  const [deletingProductId, setDeletingProductId] =
+    useState(null);
+
+
+  // ==========================================================
+  // ADD PRODUCT
+  // ==========================================================
+
+  const [showAddProduct, setShowAddProduct] =
+    useState(false);
+
+  const [creatingProduct, setCreatingProduct] =
+    useState(false);
+
   const [newProduct, setNewProduct] = useState({
     name: '',
-    categoryId: 'bhel',
     price: '',
+    categoryId: 'snacks',
     description: '',
-    imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=600&q=80',
-    isCooked: true,
-    allowsSpiceCustomization: true,
-    isAvailable: true
+    imageUrl: '',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    isAvailable: true,
   });
 
-  // Fetch products for admin management
+  const [newImageLoading, setNewImageLoading] =
+    useState(false);
+
+
+  // ==========================================================
+  // EDIT PRODUCT
+  // ==========================================================
+
+  const [editingProduct, setEditingProduct] =
+    useState(null);
+
+  const [editForm, setEditForm] = useState({
+    name: '',
+    price: '',
+    imageUrl: '',
+    description: '',
+    isAvailable: true,
+  });
+
+  const [editSaving, setEditSaving] =
+    useState(false);
+
+  const [editImageLoading, setEditImageLoading] =
+    useState(false);
+
+
+  // ==========================================================
+  // TOAST
+  // ==========================================================
+
+  const [toast, setToast] = useState(null);
+
+
+  // ==========================================================
+  // FETCH PRODUCTS
+  // ==========================================================
+
   const fetchProducts = async () => {
     try {
-      const res = await api.getProducts();
-      if (res && res.data) {
-        setProducts(res.data);
+      const response = await api.getProducts();
+
+      if (response?.data) {
+        setProducts(response.data);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(
+        'Could not fetch products:',
+        error
+      );
+
+      showToast(
+        'error',
+        error.message || 'Could not load products'
+      );
+    } finally {
+      setLoadingProducts(false);
     }
   };
+
+
+  // ==========================================================
+  // TOAST
+  // ==========================================================
+
+  const showToast = (type, message) => {
+    setToast({
+      type,
+      message,
+    });
+
+    setTimeout(() => {
+      setToast(null);
+    }, 3000);
+  };
+
+
+  // ==========================================================
+  // INITIAL LOAD
+  // ==========================================================
 
   useEffect(() => {
     fetchProducts();
     fetchOrders();
+  }, []);
+
+
+  // ==========================================================
+  // AUTO REFRESH
+  // ==========================================================
+
+  useEffect(() => {
     const interval = setInterval(() => {
+      fetchProducts();
       fetchOrders();
-    }, 3000);
+    }, 4000);
+
     return () => clearInterval(interval);
   }, []);
 
-  // Stock toggle action
-  const handleToggleStock = async (productId, currentStatus) => {
+
+  // ==========================================================
+  // MANUAL REFRESH
+  // ==========================================================
+
+  const handleRefresh = async () => {
     try {
-      const res = await api.updateProduct(productId, { isAvailable: !currentStatus });
-      if (res && res.data) {
-        setProducts(prev => prev.map(p => (p.id === productId ? res.data : p)));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
- 
-  // Price change action
-  const handlePriceChange = async (productId) => {
-    const newPriceStr = window.prompt('Enter new price for this item:');
-    if (!newPriceStr || isNaN(Number(newPriceStr))) return;
-    try {
-      const res = await api.updateProduct(productId, { price: Number(newPriceStr) });
-      if (res && res.data) {
-        setProducts(prev => prev.map(p => (p.id === productId ? res.data : p)));
-      }
-    } catch (err) {
-      console.error(err);
+      setRefreshing(true);
+
+      await Promise.all([
+        fetchProducts(),
+        fetchOrders(),
+      ]);
+
+      showToast(
+        'success',
+        'Dashboard refreshed ✓'
+      );
+    } catch (error) {
+      showToast(
+        'error',
+        'Could not refresh dashboard'
+      );
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  // Delete product action
-  const handleDeleteProduct = async (productId) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) return;
-    try {
-      await api.deleteProduct(productId);
-      setProducts(prev => prev.filter(p => p.id !== productId));
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
-  // Create product action
-  const handleCreateProduct = async (e) => {
-    e.preventDefault();
-    if (!newProduct.name || !newProduct.price) return;
-    setLoading(true);
+  // ==========================================================
+  // PRODUCT GROUPS
+  // ==========================================================
+
+  const bhelProducts = useMemo(() => {
+    return products.filter(isBhelProduct);
+  }, [products]);
+
+
+  const normalProducts = useMemo(() => {
+    return products.filter(
+      (product) => !isBhelProduct(product)
+    );
+  }, [products]);
+
+
+  // ==========================================================
+  // BHEL SHARED STOCK
+  // ==========================================================
+
+  const bhelHalfStock = useMemo(() => {
+    const bhel = bhelProducts[0];
+
+    if (!bhel) return 0;
+
+    return Number(
+      bhel.stockHalfUnits ?? 0
+    );
+  }, [bhelProducts]);
+
+
+  const currentBhelHalfStock =
+    bhelHalfDraft !== null
+      ? Number(bhelHalfDraft)
+      : bhelHalfStock;
+
+
+  // ==========================================================
+  // ORDER STATS
+  // ==========================================================
+
+  const activeOrders = orders.filter(
+    (order) =>
+      order.status !== 'delivered' &&
+      order.status !== 'cancelled'
+  );
+
+
+  const placedOrders = orders.filter(
+    (order) => order.status === 'placed'
+  );
+
+
+  const preparingOrders = orders.filter(
+    (order) =>
+      order.status === 'accepted' ||
+      order.status === 'preparing'
+  );
+
+
+  const readyOrders = orders.filter(
+    (order) => order.status === 'ready'
+  );
+
+
+  const deliveryOrders = orders.filter(
+    (order) =>
+      order.status === 'out_for_delivery'
+  );
+
+
+  // ==========================================================
+  // TODAY'S BUSINESS DATA
+  // ==========================================================
+
+  const todayOrders = useMemo(() => {
+    const now = new Date();
+
+    return orders.filter((order) => {
+      if (!order.createdAt) return false;
+
+      const orderDate = new Date(order.createdAt);
+
+      return (
+        orderDate.getDate() === now.getDate() &&
+        orderDate.getMonth() === now.getMonth() &&
+        orderDate.getFullYear() === now.getFullYear()
+      );
+    });
+  }, [orders]);
+
+
+  const validTodayOrders = useMemo(() => {
+    return todayOrders.filter(
+      (order) => order.status !== 'cancelled'
+    );
+  }, [todayOrders]);
+
+
+  const todayRevenue = useMemo(() => {
+    return validTodayOrders.reduce(
+      (sum, order) =>
+        sum + Number(order.total || 0),
+      0
+    );
+  }, [validTodayOrders]);
+
+
+  const todayItemsSold = useMemo(() => {
+    return validTodayOrders.reduce(
+      (sum, order) =>
+        sum +
+        (order.items || []).reduce(
+          (itemSum, item) =>
+            itemSum + Number(item.quantity || 0),
+          0
+        ),
+      0
+    );
+  }, [validTodayOrders]);
+
+
+  const todayDeliveryFees = useMemo(() => {
+    return validTodayOrders.reduce(
+      (sum, order) =>
+        sum + Number(order.deliveryFee || 0),
+      0
+    );
+  }, [validTodayOrders]);
+
+
+  const todayAverageOrder = useMemo(() => {
+    if (validTodayOrders.length === 0) {
+      return 0;
+    }
+
+    return todayRevenue / validTodayOrders.length;
+  }, [todayRevenue, validTodayOrders]);
+
+
+  const todayCancelledOrders = useMemo(() => {
+    return todayOrders.filter(
+      (order) => order.status === 'cancelled'
+    ).length;
+  }, [todayOrders]);
+
+
+  const todayDeliveredOrders = useMemo(() => {
+    return todayOrders.filter(
+      (order) => order.status === 'delivered'
+    ).length;
+  }, [todayOrders]);
+
+
+  const todayActiveOrders = useMemo(() => {
+    return todayOrders.filter(
+      (order) =>
+        order.status !== 'delivered' &&
+        order.status !== 'cancelled'
+    ).length;
+  }, [todayOrders]);
+
+
+  // ==========================================================
+  // NORMAL STOCK SAVE
+  // ==========================================================
+
+  const handleSaveStock = async (product) => {
+    const quantity = Number(
+      stockDrafts[product.id] ??
+      product.stockQuantity ??
+      0
+    );
+
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 0
+    ) {
+      showToast(
+        'error',
+        'Enter a valid stock quantity'
+      );
+
+      return;
+    }
+
     try {
-      const res = await api.createProduct({
-        ...newProduct,
-        price: Number(newProduct.price)
+      setSavingStockId(product.id);
+
+      const response =
+        await api.updateProduct(
+          product.id,
+          {
+            stockQuantity: quantity,
+            isAvailable: quantity > 0,
+          }
+        );
+
+      if (!response?.data) {
+        throw new Error(
+          'Stock update failed'
+        );
+      }
+
+      setProducts((previous) =>
+        previous.map((item) =>
+          item.id === product.id
+            ? response.data
+            : item
+        )
+      );
+
+      setStockDrafts((previous) => {
+        const next = {
+          ...previous,
+        };
+
+        delete next[product.id];
+
+        return next;
       });
-      if (res && res.data) {
-        setProducts(prev => [res.data, ...prev]);
-        setShowAddModal(false);
+
+      showToast(
+        'success',
+        `${product.name} stock saved ✓`
+      );
+    } catch (error) {
+      console.error(
+        'STOCK UPDATE ERROR:',
+        error
+      );
+
+      showToast(
+        'error',
+        error.message ||
+          'Could not save stock'
+      );
+    } finally {
+      setSavingStockId(null);
+    }
+  };
+
+
+  // ==========================================================
+  // BHEL STOCK SAVE
+  // ==========================================================
+
+  const handleSaveBhelStock = async () => {
+    const quantity = Number(
+      currentBhelHalfStock
+    );
+
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 0
+    ) {
+      showToast(
+        'error',
+        'Enter a valid Bhel quantity'
+      );
+
+      return;
+    }
+
+    if (!bhelProducts.length) {
+      showToast(
+        'error',
+        'No Bhel products found'
+      );
+
+      return;
+    }
+
+    try {
+      setSavingBhelStock(true);
+
+      /*
+       * Bhel uses shared stock.
+       *
+       * 1 shared stock =
+       * 1 Full Bhel
+       * OR
+       * 2 Half Bhel.
+       */
+
+      for (const product of bhelProducts) {
+        await api.updateProduct(
+          product.id,
+          {
+            stockHalfUnits: quantity,
+            isAvailable: quantity > 0,
+          }
+        );
+      }
+
+      await fetchProducts();
+
+      setBhelHalfDraft(null);
+
+      showToast(
+        'success',
+        `Bhel shared stock saved: ${quantity} ✓`
+      );
+    } catch (error) {
+      console.error(
+        'BHEL STOCK ERROR:',
+        error
+      );
+
+      showToast(
+        'error',
+        error.message ||
+          'Could not save Bhel stock'
+      );
+    } finally {
+      setSavingBhelStock(false);
+    }
+  };
+
+
+  // ==========================================================
+  // OPEN EDIT PRODUCT
+  // ==========================================================
+
+  const handleEditProduct = (product) => {
+    setEditingProduct(product);
+
+    setEditForm({
+      name: product.name || '',
+      price: String(
+        product.price ?? ''
+      ),
+      imageUrl: product.imageUrl || '',
+      description:
+        product.description || '',
+      isAvailable:
+        product.isAvailable !== false,
+    });
+  };
+
+
+  // ==========================================================
+  // EDIT GALLERY IMAGE
+  // ==========================================================
+
+  const handleEditImageChange = async (
+    event
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+      setEditImageLoading(true);
+
+      const compressedImage =
+        await compressImage(file);
+
+      setEditForm((previous) => ({
+        ...previous,
+        imageUrl: compressedImage,
+      }));
+
+      showToast(
+        'success',
+        'Image selected ✓'
+      );
+    } catch (error) {
+      showToast(
+        'error',
+        error.message ||
+          'Could not process image'
+      );
+    } finally {
+      setEditImageLoading(false);
+
+      event.target.value = '';
+    }
+  };
+
+
+  // ==========================================================
+  // NEW PRODUCT GALLERY IMAGE
+  // ==========================================================
+
+  const handleNewImageChange = async (
+    event
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+      setNewImageLoading(true);
+
+      const compressedImage =
+        await compressImage(file);
+
+      setNewProduct((previous) => ({
+        ...previous,
+        imageUrl: compressedImage,
+      }));
+
+      showToast(
+        'success',
+        'Image selected ✓'
+      );
+    } catch (error) {
+      showToast(
+        'error',
+        error.message ||
+          'Could not process image'
+      );
+    } finally {
+      setNewImageLoading(false);
+
+      event.target.value = '';
+    }
+  };
+
+
+  // ==========================================================
+  // SAVE PRODUCT EDIT
+  // ==========================================================
+
+  const handleSaveProductEdit =
+    async () => {
+      if (!editingProduct) return;
+
+      const name =
+        editForm.name.trim();
+
+      const price =
+        Number(editForm.price);
+
+      if (!name) {
+        showToast(
+          'error',
+          'Product name is required'
+        );
+
+        return;
+      }
+
+      if (
+        Number.isNaN(price) ||
+        price < 0
+      ) {
+        showToast(
+          'error',
+          'Enter a valid price'
+        );
+
+        return;
+      }
+
+      try {
+        setEditSaving(true);
+
+        const response =
+          await api.updateProduct(
+            editingProduct.id,
+            {
+              name,
+              price,
+              imageUrl:
+                editForm.imageUrl,
+              description:
+                editForm.description,
+              isAvailable:
+                editForm.isAvailable,
+            }
+          );
+
+        if (!response?.data) {
+          throw new Error(
+            'Product update failed'
+          );
+        }
+
+        setProducts((previous) =>
+          previous.map((product) =>
+            product.id ===
+            editingProduct.id
+              ? response.data
+              : product
+          )
+        );
+
+        setEditingProduct(null);
+
+        showToast(
+          'success',
+          `${response.data.name} updated successfully ✓`
+        );
+
+        await fetchProducts();
+      } catch (error) {
+        console.error(
+          'PRODUCT UPDATE ERROR:',
+          error
+        );
+
+        showToast(
+          'error',
+          error.message ||
+            'Could not update product'
+        );
+      } finally {
+        setEditSaving(false);
+      }
+    };
+
+
+  // ==========================================================
+  // CREATE PRODUCT
+  // ==========================================================
+
+  const handleCreateProduct =
+    async () => {
+      const name =
+        newProduct.name.trim();
+
+      const price =
+        Number(newProduct.price);
+
+      if (!name) {
+        showToast(
+          'error',
+          'Product name is required'
+        );
+
+        return;
+      }
+
+      if (
+        Number.isNaN(price) ||
+        price < 0
+      ) {
+        showToast(
+          'error',
+          'Enter a valid price'
+        );
+
+        return;
+      }
+
+      try {
+        setCreatingProduct(true);
+
+        const response =
+          await api.createProduct({
+            name,
+            price,
+            categoryId:
+              newProduct.categoryId ||
+              'snacks',
+
+            description:
+              newProduct.description ||
+              '',
+
+            imageUrl:
+              newProduct.imageUrl ||
+              '',
+
+            isCooked:
+              Boolean(
+                newProduct.isCooked
+              ),
+
+            allowsSpiceCustomization:
+              Boolean(
+                newProduct.allowsSpiceCustomization
+              ),
+
+            isAvailable:
+              Boolean(
+                newProduct.isAvailable
+              ),
+          });
+
+        if (!response?.data) {
+          throw new Error(
+            'Product creation failed'
+          );
+        }
+
+        setProducts((previous) => [
+          ...previous,
+          response.data,
+        ]);
+
         setNewProduct({
           name: '',
-          categoryId: 'bhel',
           price: '',
+          categoryId: 'snacks',
           description: '',
-          imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=600&q=80',
-          isCooked: true,
-          allowsSpiceCustomization: true,
-          isAvailable: true
+          imageUrl: '',
+          isCooked: false,
+          allowsSpiceCustomization: false,
+          isAvailable: true,
         });
+
+        setShowAddProduct(false);
+
+        showToast(
+          'success',
+          `${response.data.name} created successfully ✓`
+        );
+
+        await fetchProducts();
+      } catch (error) {
+        console.error(
+          'CREATE PRODUCT ERROR:',
+          error
+        );
+
+        showToast(
+          'error',
+          error.message ||
+            'Could not create product'
+        );
+      } finally {
+        setCreatingProduct(false);
       }
-    } catch (err) {
-      alert(err.message || 'Failed to create product');
-    } finally {
-      setLoading(false);
+    };
+
+
+  // ==========================================================
+  // DELETE PRODUCT
+  // ==========================================================
+
+  const handleDeleteProduct =
+    async (product) => {
+      const confirmed =
+        window.confirm(
+          `Delete "${product.name}"?`
+        );
+
+      if (!confirmed) return;
+
+      try {
+        setDeletingProductId(
+          product.id
+        );
+
+        await api.deleteProduct(
+          product.id
+        );
+
+        setProducts((previous) =>
+          previous.filter(
+            (item) =>
+              item.id !== product.id
+          )
+        );
+
+        showToast(
+          'success',
+          `${product.name} deleted ✓`
+        );
+      } catch (error) {
+        console.error(
+          'DELETE ERROR:',
+          error
+        );
+
+        showToast(
+          'error',
+          error.message ||
+            'Could not delete product'
+        );
+      } finally {
+        setDeletingProductId(null);
+      }
+    };
+
+
+  // ==========================================================
+  // ORDER STATUS
+  // ==========================================================
+
+  const handleOrderStatusChange =
+    async (
+      orderId,
+      newStatus
+    ) => {
+      try {
+        setStatusSavingId(orderId);
+
+        await updateOrderStatus(
+          orderId,
+          newStatus
+        );
+
+        /*
+         * When order becomes accepted,
+         * backend deducts stock.
+         *
+         * Refresh products immediately
+         * so admin sees new quantity.
+         */
+
+        await Promise.all([
+          fetchOrders(),
+          fetchProducts(),
+        ]);
+
+        showToast(
+          'success',
+          `Order moved to ${formatStatus(
+            newStatus
+          )} ✓`
+        );
+      } catch (error) {
+        console.error(
+          'ORDER STATUS ERROR:',
+          error
+        );
+
+        showToast(
+          'error',
+          error.message ||
+            'Could not update order'
+        );
+      } finally {
+        setStatusSavingId(null);
+      }
+    };
+
+
+  // ==========================================================
+  // STATUS FORMAT
+  // ==========================================================
+
+  function formatStatus(status) {
+    if (!status) return 'Unknown';
+
+    return status
+      .replaceAll('_', ' ')
+      .replace(/\b\w/g, (char) =>
+        char.toUpperCase()
+      );
+  }
+
+
+  // ==========================================================
+  // ORDER STATUS BUTTONS
+  // ==========================================================
+
+  const renderOrderActions = (
+    order
+  ) => {
+    const saving =
+      statusSavingId === order.id;
+
+    if (order.status === 'placed') {
+      return (
+        <button
+          disabled={saving}
+          onClick={() =>
+            handleOrderStatusChange(
+              order.id,
+              'accepted'
+            )
+          }
+          className="px-4 py-2 rounded-xl bg-black text-white font-bold disabled:opacity-50"
+        >
+          {saving
+            ? 'Accepting...'
+            : 'Accept Order'}
+        </button>
+      );
     }
+
+    if (
+      order.status === 'accepted'
+    ) {
+      return (
+        <button
+          disabled={saving}
+          onClick={() =>
+            handleOrderStatusChange(
+              order.id,
+              'preparing'
+            )
+          }
+          className="px-4 py-2 rounded-xl bg-brand-yellow text-black font-bold disabled:opacity-50"
+        >
+          {saving
+            ? 'Updating...'
+            : 'Start Preparing'}
+        </button>
+      );
+    }
+
+    if (
+      order.status === 'preparing'
+    ) {
+      return (
+        <button
+          disabled={saving}
+          onClick={() =>
+            handleOrderStatusChange(
+              order.id,
+              'ready'
+            )
+          }
+          className="px-4 py-2 rounded-xl bg-green-500 text-white font-bold disabled:opacity-50"
+        >
+          {saving
+            ? 'Updating...'
+            : 'Mark Ready'}
+        </button>
+      );
+    }
+
+    if (
+      order.status === 'ready'
+    ) {
+      return (
+        <div className="px-4 py-2 rounded-xl bg-green-100 text-green-700 font-bold">
+          Ready for Delivery
+        </div>
+      );
+    }
+
+    if (
+      order.status ===
+      'out_for_delivery'
+    ) {
+      return (
+        <div className="px-4 py-2 rounded-xl bg-blue-100 text-blue-700 font-bold">
+          Out for Delivery
+        </div>
+      );
+    }
+
+    if (
+      order.status === 'delivered'
+    ) {
+      return (
+        <div className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 font-bold">
+          Delivered
+        </div>
+      );
+    }
+
+    if (
+      order.status === 'cancelled'
+    ) {
+      return (
+        <div className="px-4 py-2 rounded-xl bg-red-100 text-red-600 font-bold">
+          Cancelled
+        </div>
+      );
+    }
+
+    return null;
   };
 
-  // Filter orders
-  const filteredOrders = orders.filter(o => {
-    if (orderFilter === 'all') return true;
-    return o.status === orderFilter;
-  });
 
-  const totalRevenue = orders
-    .filter(o => o.status !== 'cancelled')
-    .reduce((sum, o) => sum + (o.total || 0), 0);
+  // ==========================================================
+  // ORDER CARD
+  // ==========================================================
 
-  const pendingCount = orders.filter(o => ['placed', 'accepted', 'preparing'].includes(o.status)).length;
+  const renderOrderCard = (
+    order
+  ) => {
+    return (
+      <div
+        key={order.id}
+        className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5"
+      >
 
-  return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-20">
-      {/* Top Banner */}
-      <div className="bg-brand-black text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-brand-yellow flex items-center justify-center text-brand-black shadow-yellow-glow">
-              <ChefHat className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">
-                Bhook_Lgi Kitchen HQ
-              </h2>
-              <span className="text-xs text-brand-yellow font-bold uppercase tracking-wider">
-                Admin Control Dashboard
+        {/* TOP */}
+
+        <div className="flex flex-wrap items-start justify-between gap-4">
+
+          <div>
+
+            <div className="flex items-center gap-2">
+
+              <h3 className="font-black text-lg">
+                #{order.id}
+              </h3>
+
+              <span className="px-3 py-1 rounded-full bg-gray-100 text-xs font-bold">
+                {formatStatus(
+                  order.status
+                )}
               </span>
+
             </div>
-          </div>
-        </div>
 
-        {/* Quick stats and customer app switcher */}
-        <div className="flex items-center gap-3">
-          <div className="bg-gray-900 border border-gray-800 px-3.5 py-2 rounded-2xl text-center">
-            <span className="block text-[10px] text-gray-400 font-bold uppercase">Active Orders</span>
-            <span className="text-base font-black text-brand-yellow">{pendingCount}</span>
+            <p className="text-sm text-gray-500 mt-1">
+              {order.customerName ||
+                'Customer'}
+            </p>
+
           </div>
 
-          <div className="bg-gray-900 border border-gray-800 px-3.5 py-2 rounded-2xl text-center">
-            <span className="block text-[10px] text-gray-400 font-bold uppercase">Today's Revenue</span>
-            <span className="text-base font-black text-emerald-400">₹{totalRevenue}</span>
+          <div className="text-right">
+
+            <div className="text-xl font-black">
+              ₹{order.total}
+            </div>
+
+            <div className="text-xs text-gray-500">
+              {order.hostel} • Room{' '}
+              {order.roomNumber}
+            </div>
+
           </div>
 
-          <button
-            onClick={onSwitchToCustomer}
-            className="px-4 py-2.5 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black font-black text-xs rounded-2xl shadow-yellow-glow transition-all"
-          >
-            Switch to App ➔
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all ${
-              activeTab === 'orders'
-                ? 'bg-brand-black text-brand-yellow shadow-md'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            Live Orders Queue ({orders.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all ${
-              activeTab === 'products'
-                ? 'bg-brand-black text-brand-yellow shadow-md'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            Inventory & Stock ({products.length})
-          </button>
         </div>
 
-        {activeTab === 'orders' ? (
-          <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
-            {['all', 'placed', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'delivered'].map((st) => (
-              <button
-                key={st}
-                onClick={() => setOrderFilter(st)}
-                className={`px-2.5 py-1 rounded-xl uppercase text-[10px] tracking-wider transition-all ${
-                  orderFilter === st
-                    ? 'bg-brand-yellow text-brand-black font-black'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
+
+        {/* ITEMS */}
+
+        <div className="mt-5 space-y-2">
+
+          {order.items?.map(
+            (item, index) => (
+              <div
+                key={
+                  item.productId ||
+                  index
+                }
+                className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"
               >
-                {st}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1 px-3.5 py-1.5 bg-brand-yellow text-brand-black rounded-xl font-bold text-xs shadow-xs hover:bg-brand-yellowHover"
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Add Product</span>
-          </button>
-        )}
-      </div>
 
-      {/* TAB 1: ORDERS QUEUE */}
-      {activeTab === 'orders' && (
-        <div className="space-y-4">
-          {filteredOrders.length === 0 ? (
-            <div className="bg-white rounded-3xl p-10 text-center border border-gray-100 text-gray-500">
-              <Package className="w-10 h-10 mx-auto mb-2 opacity-40 text-gray-400" />
-              <p className="text-sm font-bold">No orders found in "{orderFilter}" status.</p>
-            </div>
-          ) : (
-            filteredOrders.map((ord) => {
-              const timeStr = new Date(ord.createdAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit'
-              });
+                <div>
 
-              return (
-                <div
-                  key={ord.id}
-                  className="bg-white rounded-3xl p-5 border border-gray-100 shadow-soft space-y-4 hover:shadow-card-lift transition-shadow"
-                >
-                  {/* Order Card Header */}
-                  <div className="flex flex-wrap items-start justify-between gap-2 pb-3 border-b border-gray-100">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-black text-brand-black">
-                          {ord.orderNumber}
-                        </span>
-                        <span className="text-xs font-bold text-gray-400">• {timeStr}</span>
-                        <span className="text-[11px] font-black uppercase px-2 py-0.5 rounded-full bg-brand-yellowLight text-brand-yellowHover">
-                          {ord.deliveryType === 'pickup' ? '🏃 Pickup' : '🚪 Room Delivery'}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-600 font-semibold mt-1 flex items-center gap-3">
-                        <span className="text-brand-black font-extrabold">{ord.customerName}</span>
-                        <span>📱 {ord.customerPhone}</span>
-                        <span className="bg-gray-100 px-2 py-0.5 rounded-md font-black text-brand-black">
-                          📍 {ord.hostel}, Room {ord.roomNumber}
-                        </span>
-                      </div>
-                    </div>
+                  <span className="font-bold">
+                    {item.quantity} ×{' '}
+                    {item.productName ||
+                      item.name ||
+                      'Item'}
+                  </span>
 
-                    <div className="text-right">
-                      <div className="text-lg font-black text-brand-black">₹{ord.total}</div>
-                      <span
-                        className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-full mt-0.5 ${
-                          ord.status === 'delivered'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : ord.status === 'cancelled'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800 border border-yellow-300 animate-pulse'
-                        }`}
-                      >
-                        {ord.status}
-                      </span>
-                    </div>
-                  </div>
+                  {item.variant && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      {item.variant}
+                    </span>
+                  )}
 
-                  {/* Items list */}
-                  <div className="space-y-1.5 bg-brand-cream/50 rounded-2xl p-3 border border-gray-100">
-                    <div className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                      Ordered Items:
-                    </div>
-                    {ord.items?.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-xs">
-                        <div className="font-bold text-brand-black">
-                          {item.quantity}x {item.productName || item.name}
-                          {item.variant && <span className="text-gray-500 font-normal"> ({item.variant})</span>}
-                          {item.spiceLevel && (
-                            <span className="ml-1.5 px-1.5 py-0.2 bg-red-100 text-red-700 text-[10px] font-black rounded-md">
-                              {item.spiceLevel === 'spicy' ? '🌶️ Spicy' : '🙂 Non-Spicy'}
-                            </span>
-                          )}
-                          {item.addons && item.addons.length > 0 && (
-                            <span className="text-[10px] text-gray-500 ml-1">
-                              (+{item.addons.join(', ')})
-                            </span>
-                          )}
-                        </div>
-                        <span className="font-black text-brand-black">
-                          ₹{item.itemTotal || item.priceAtOrder * item.quantity}
-                        </span>
-                      </div>
-                    ))}
-
-                    {ord.deliveryNotes && (
-                      <div className="pt-2 border-t border-gray-200/60 text-[11px] text-gray-600">
-                        <span className="font-bold text-gray-800">Hostel Note:</span> "{ord.deliveryNotes}"
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Admin Order Action Pipeline Buttons */}
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">
-                      Advance Status Pipeline (Updates Customer View Instantly):
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => updateOrderStatus(ord.id, 'accepted')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-                          ord.status === 'accepted'
-                            ? 'bg-purple-600 text-white shadow-xs'
-                            : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                        }`}
-                      >
-                        1. Accept Order 🔥
-                      </button>
-
-                      <button
-                        onClick={() => updateOrderStatus(ord.id, 'preparing')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-                          ord.status === 'preparing'
-                            ? 'bg-yellow-500 text-black shadow-xs ring-2 ring-yellow-300'
-                            : 'bg-yellow-50 text-yellow-800 hover:bg-yellow-100'
-                        }`}
-                      >
-                        2. Preparing 🍜
-                      </button>
-
-                      <button
-                        onClick={() => updateOrderStatus(ord.id, 'ready')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-                          ord.status === 'ready'
-                            ? 'bg-teal-600 text-white shadow-xs'
-                            : 'bg-teal-50 text-teal-700 hover:bg-teal-100'
-                        }`}
-                      >
-                        3. Ready 🥡
-                      </button>
-
-                      <button
-                        onClick={() => updateOrderStatus(ord.id, 'out_for_delivery')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-                          ord.status === 'out_for_delivery'
-                            ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-300'
-                            : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-                        }`}
-                      >
-                        4. Out for Delivery 🛵
-                      </button>
-
-                      <button
-                        onClick={() => updateOrderStatus(ord.id, 'delivered')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-                          ord.status === 'delivered'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                        }`}
-                      >
-                        5. Delivered 🎉
-                      </button>
-
-                      <button
-                        onClick={() => updateOrderStatus(ord.id, 'cancelled')}
-                        className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-red-50 text-red-700 hover:bg-red-100 transition-all ml-auto"
-                      >
-                        Cancel ❌
-                      </button>
-                    </div>
-                  </div>
                 </div>
-              );
-            })
+
+                <span className="font-bold">
+                  ₹
+                  {(
+                    Number(
+                      item.price || 0
+                    ) *
+                    Number(
+                      item.quantity || 0
+                    )
+                  ).toFixed(0)}
+                </span>
+
+              </div>
+            )
+          )}
+
+        </div>
+
+
+        {/* DELIVERY */}
+
+        <div className="mt-4 text-sm text-gray-600">
+
+          <div>
+            <strong>Hostel:</strong>{' '}
+            {order.hostel}
+          </div>
+
+          <div>
+            <strong>Room:</strong>{' '}
+            {order.roomNumber}
+          </div>
+
+          {order.deliveryType && (
+            <div>
+              <strong>Delivery:</strong>{' '}
+              {order.deliveryType}
+            </div>
+          )}
+
+          {order.deliveryNotes && (
+            <div className="mt-1">
+              <strong>Note:</strong>{' '}
+              {order.deliveryNotes}
+            </div>
+          )}
+
+        </div>
+
+
+        {/* ACTION */}
+
+        <div className="mt-5 pt-4 border-t flex justify-end">
+          {renderOrderActions(
+            order
           )}
         </div>
-      )}
 
-      {/* TAB 2: INVENTORY & STOCK MANAGEMENT */}
-      {activeTab === 'products' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-brand-yellowLight/80 border border-brand-yellow/30 rounded-2xl text-xs font-semibold text-brand-black flex items-center justify-between">
-            <span>
-              💡 <strong>Stock availability is dynamic!</strong> Toggle items to "Out of Stock 🔴" whenever limited hostel ingredients run out. The customer menu updates immediately.
-            </span>
+      </div>
+    );
+  };
+
+
+  // ==========================================================
+  // PRODUCT IMAGE
+  // ==========================================================
+
+  const ProductImage = ({
+    product,
+    size = 'md',
+  }) => {
+    const sizeClass =
+      size === 'sm'
+        ? 'w-14 h-14'
+        : 'w-20 h-20';
+
+    return (
+      <div
+        className={`${sizeClass} rounded-2xl overflow-hidden bg-gray-100 flex-shrink-0`}
+      >
+
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-400">
+            <Package size={24} />
           </div>
+        )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.map((prod) => {
-              const isAvail = prod.isAvailable !== false;
-              return (
-                <div
-                  key={prod.id}
-                  className={`bg-white rounded-3xl p-4 border transition-all flex flex-col justify-between ${
-                    isAvail ? 'border-gray-100 shadow-soft' : 'border-red-200 bg-red-50/20 opacity-80'
+      </div>
+    );
+  };
+
+
+  // ==========================================================
+  // PRODUCT INVENTORY CARD
+  // ==========================================================
+
+  const renderNormalProduct = (
+    product
+  ) => {
+    const stock =
+      stockDrafts[product.id] ??
+      getNormalStock(product);
+
+    const saving =
+      savingStockId === product.id;
+
+    return (
+      <div
+        key={product.id}
+        className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4"
+      >
+
+        <div className="flex gap-4">
+
+          <ProductImage
+            product={product}
+          />
+
+          <div className="flex-1 min-w-0">
+
+            <div className="flex items-start justify-between gap-3">
+
+              <div>
+
+                <h3 className="font-black text-lg truncate">
+                  {product.name}
+                </h3>
+
+                <p className="text-sm text-gray-500">
+                  ₹{product.price}
+                </p>
+
+              </div>
+
+              <button
+                onClick={() =>
+                  handleEditProduct(
+                    product
+                  )
+                }
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-yellow text-black font-bold text-sm"
+              >
+                <Edit2 size={15} />
+                Edit
+              </button>
+
+            </div>
+
+
+            {/* STOCK */}
+
+            <div className="mt-4">
+
+              <div className="flex items-center justify-between mb-2">
+
+                <label className="text-xs font-bold text-gray-500">
+                  STOCK
+                </label>
+
+                <span
+                  className={`text-xs font-black ${
+                    Number(stock) <= 0
+                      ? 'text-red-600'
+                      : Number(stock) <= 5
+                      ? 'text-orange-600'
+                      : 'text-green-600'
                   }`}
                 >
-                  <div className="flex gap-3">
-                    <img
-                      src={prod.imageUrl}
-                      alt={prod.name}
-                      className="w-16 h-16 rounded-2xl object-cover bg-gray-100 shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1">
-                        <h4 className="font-black text-sm text-brand-black leading-snug truncate">
-                          {prod.name}
-                        </h4>
-                        <button
-                          onClick={() => handleDeleteProduct(prod.id)}
-                          className="text-gray-400 hover:text-brand-chili p-1"
-                          title="Delete product"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                  {Number(stock) <= 0
+                    ? 'OUT OF STOCK'
+                    : `${stock} available`}
+                </span>
+
+              </div>
+
+              <div className="flex gap-2">
+
+                <input
+                  type="number"
+                  min="0"
+                  value={stock}
+                  onChange={(event) =>
+                    setStockDrafts(
+                      (previous) => ({
+                        ...previous,
+                        [product.id]:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  className="flex-1 min-w-0 px-3 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-brand-yellow"
+                />
+
+                <button
+                  disabled={saving}
+                  onClick={() =>
+                    handleSaveStock(
+                      product
+                    )
+                  }
+                  className="px-4 py-2.5 rounded-xl bg-black text-white font-bold disabled:opacity-50"
+                >
+                  {saving
+                    ? 'Saving...'
+                    : 'Save'}
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        {/* DELETE */}
+
+        <div className="mt-4 pt-3 border-t flex justify-end">
+
+          <button
+            disabled={
+              deletingProductId ===
+              product.id
+            }
+            onClick={() =>
+              handleDeleteProduct(
+                product
+              )
+            }
+            className="flex items-center gap-1.5 text-red-500 text-sm font-bold hover:text-red-700 disabled:opacity-50"
+          >
+
+            <Trash2 size={15} />
+
+            {deletingProductId ===
+            product.id
+              ? 'Deleting...'
+              : 'Delete'}
+
+          </button>
+
+        </div>
+
+      </div>
+    );
+  };
+
+
+  // ==========================================================
+  // BHEL PRODUCT CARD
+  // ==========================================================
+
+  const renderBhelProduct = (
+    product
+  ) => {
+    const available =
+      getBhelAvailableQuantity(
+        product,
+        currentBhelHalfStock
+      );
+
+    return (
+      <div
+        key={product.id}
+        className="bg-gray-50 rounded-2xl p-3 flex items-center gap-3"
+      >
+
+        <ProductImage
+          product={product}
+          size="sm"
+        />
+
+        <div className="flex-1 min-w-0">
+
+          <h4 className="font-black truncate">
+            {product.name}
+          </h4>
+
+          <p className="text-sm text-gray-500">
+            ₹{product.price}
+          </p>
+
+          <p
+            className={`text-xs font-bold ${
+              available <= 0
+                ? 'text-red-600'
+                : available <= 5
+                ? 'text-orange-600'
+                : 'text-green-600'
+            }`}
+          >
+            {available <= 0
+              ? 'Out of Stock'
+              : `${available} available`}
+          </p>
+
+        </div>
+
+        <button
+          onClick={() =>
+            handleEditProduct(
+              product
+            )
+          }
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-yellow text-black font-bold text-sm"
+        >
+          <Edit2 size={15} />
+          Edit
+        </button>
+
+      </div>
+    );
+  };
+
+
+  // ==========================================================
+  // HEADER
+  // ==========================================================
+
+  return (
+    <div className="min-h-screen bg-[#fffdf5] text-gray-900">
+
+
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-100">
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+
+          <div className="flex items-center justify-between gap-4">
+
+            <div className="flex items-center gap-3">
+
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+              )}
+
+              <div>
+
+                <div className="flex items-center gap-2">
+
+                  <ChefHat
+                    size={22}
+                    className="text-brand-yellow"
+                  />
+
+                  <h1 className="text-xl sm:text-2xl font-black">
+                    Bhook_Lgi Admin
+                  </h1>
+
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Orders • Inventory • Business
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div className="flex items-center gap-2">
+
+              {onSwitchToCustomer && (
+                <button
+                  onClick={
+                    onSwitchToCustomer
+                  }
+                  className="hidden sm:flex px-3 py-2 rounded-xl bg-gray-100 text-sm font-bold"
+                >
+                  Customer View
+                </button>
+              )}
+
+              <button
+                onClick={
+                  handleRefresh
+                }
+                disabled={refreshing}
+                className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center disabled:opacity-50"
+              >
+                <RefreshCw
+                  size={18}
+                  className={
+                    refreshing
+                      ? 'animate-spin'
+                      : ''
+                  }
+                />
+              </button>
+
+            </div>
+
+          </div>
+
+
+          {/* ==================================================
+              TABS
+          ================================================== */}
+
+          <div className="flex gap-2 mt-5 overflow-x-auto pb-1">
+
+            {/* ORDERS */}
+
+            <button
+              onClick={() =>
+                setActiveTab('orders')
+              }
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'orders'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+
+              <ShoppingBag size={17} />
+
+              Orders
+
+              {activeOrders.length > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-xs ${
+                    activeTab === 'orders'
+                      ? 'bg-white text-black'
+                      : 'bg-black text-white'
+                  }`}
+                >
+                  {activeOrders.length}
+                </span>
+              )}
+
+            </button>
+
+
+            {/* INVENTORY */}
+
+            <button
+              onClick={() =>
+                setActiveTab('inventory')
+              }
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'inventory'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+
+              <Package size={17} />
+
+              Inventory
+
+            </button>
+
+
+            {/* TODAY'S BUSINESS */}
+
+            <button
+              onClick={() =>
+                setActiveTab('business')
+              }
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'business'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+
+              <ShoppingBag size={17} />
+
+              Today's Business
+
+            </button>
+
+          </div>
+
+        </div>
+
+      </header>
+
+
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+
+
+        {/* ====================================================
+            ORDERS TAB
+        ==================================================== */}
+
+        {activeTab === 'orders' && (
+          <div className="space-y-6">
+
+
+            {/* STATS */}
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+
+              <div className="bg-white rounded-2xl border p-4">
+
+                <p className="text-xs text-gray-500 font-bold">
+                  NEW
+                </p>
+
+                <p className="text-2xl font-black mt-1">
+                  {placedOrders.length}
+                </p>
+
+              </div>
+
+
+              <div className="bg-white rounded-2xl border p-4">
+
+                <p className="text-xs text-gray-500 font-bold">
+                  PREPARING
+                </p>
+
+                <p className="text-2xl font-black mt-1">
+                  {preparingOrders.length}
+                </p>
+
+              </div>
+
+
+              <div className="bg-white rounded-2xl border p-4">
+
+                <p className="text-xs text-gray-500 font-bold">
+                  READY
+                </p>
+
+                <p className="text-2xl font-black mt-1">
+                  {readyOrders.length}
+                </p>
+
+              </div>
+
+
+              <div className="bg-white rounded-2xl border p-4">
+
+                <p className="text-xs text-gray-500 font-bold">
+                  DELIVERY
+                </p>
+
+                <p className="text-2xl font-black mt-1">
+                  {deliveryOrders.length}
+                </p>
+
+              </div>
+
+
+              <div className="bg-brand-yellow rounded-2xl border border-yellow-300 p-4 col-span-2 lg:col-span-1">
+
+                <p className="text-xs text-black/60 font-bold">
+                  ACTIVE
+                </p>
+
+                <p className="text-2xl font-black mt-1">
+                  {activeOrders.length}
+                </p>
+
+              </div>
+
+            </div>
+
+
+            {/* ACTIVE ORDERS */}
+
+            <div>
+
+              <div className="flex items-center justify-between mb-4">
+
+                <div>
+
+                  <h2 className="text-xl font-black">
+                    Active Orders
+                  </h2>
+
+                  <p className="text-sm text-gray-500">
+                    Manage your incoming orders
+                  </p>
+
+                </div>
+
+              </div>
+
+
+              {activeOrders.length === 0 ? (
+
+                <div className="bg-white rounded-3xl border p-10 text-center">
+
+                  <ShoppingBag
+                    size={42}
+                    className="mx-auto text-gray-300"
+                  />
+
+                  <h3 className="font-black text-lg mt-3">
+                    No active orders
+                  </h3>
+
+                  <p className="text-sm text-gray-500 mt-1">
+                    New orders will appear here.
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <div className="space-y-4">
+
+                  {activeOrders.map(
+                    renderOrderCard
+                  )}
+
+                </div>
+
+              )}
+
+            </div>
+
+          </div>
+        )}
+
+
+        {/* ====================================================
+            INVENTORY TAB
+        ==================================================== */}
+
+        {activeTab === 'inventory' && (
+          <div className="space-y-6">
+
+
+            {/* INVENTORY HEADER */}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+              <div>
+
+                <h2 className="text-2xl font-black">
+                  Inventory
+                </h2>
+
+                <p className="text-sm text-gray-500">
+                  Manage prices, images and stock
+                </p>
+
+              </div>
+
+              <button
+                onClick={() =>
+                  setShowAddProduct(
+                    true
+                  )
+                }
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand-yellow text-black font-black"
+              >
+
+                <Plus size={19} />
+
+                Add Product
+
+              </button>
+
+            </div>
+
+
+            {/* BHEL */}
+
+            {bhelProducts.length > 0 && (
+              <section>
+
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+                    <div>
+
+                      <h3 className="text-xl font-black">
+                        Bhel Shared Stock
+                      </h3>
+
+                      <p className="text-sm text-gray-500 mt-1">
+                        1 Shared = 1 Full Bhel OR 2 Half Bhel
+                      </p>
+
+                    </div>
+
+
+                    <div className="text-left sm:text-right">
+
+                      <p className="text-3xl font-black">
+                        {currentBhelHalfStock}
+                      </p>
+
+                      <p className="text-xs text-gray-500 font-bold">
+                        SHARED BHEL
+                      </p>
+
+                    </div>
+
+                  </div>
+
+
+                  {/* SHARED QUANTITY */}
+
+                  <div className="mt-5 p-4 bg-gray-50 rounded-2xl">
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+
+                      <div className="flex-1">
+
+                        <label className="text-xs font-bold text-gray-500 block mb-2">
+                          SHARED BHEL STOCK
+                        </label>
+
+                        <input
+                          type="number"
+                          min="0"
+                          value={
+                            currentBhelHalfStock
+                          }
+                          onChange={(event) =>
+                            setBhelHalfDraft(
+                              Math.max(
+                                0,
+                                Number(
+                                  event
+                                    .target
+                                    .value
+                                )
+                              )
+                            )
+                          }
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white font-black outline-none focus:ring-2 focus:ring-brand-yellow"
+                        />
+
                       </div>
 
-                      <span className="inline-block text-[10px] font-bold text-gray-400 uppercase">
-                        {prod.categoryId} {prod.isCooked ? '• Cooked' : '• Raw'}
+
+                      <button
+                        onClick={
+                          handleSaveBhelStock
+                        }
+                        disabled={
+                          savingBhelStock
+                        }
+                        className="sm:self-end px-6 py-3 rounded-xl bg-black text-white font-black disabled:opacity-50"
+                      >
+
+                        {savingBhelStock
+                          ? 'Saving...'
+                          : 'Save Quantity'}
+
+                      </button>
+
+                    </div>
+
+
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+
+                      {bhelProducts.map(
+                        (product) => (
+                          <div
+                            key={
+                              product.id
+                            }
+                            className="bg-white rounded-xl p-3 border"
+                          >
+
+                            <p className="text-xs text-gray-500 font-bold">
+                              {product.name}
+                            </p>
+
+                            <p className="text-xl font-black">
+                              {getBhelAvailableQuantity(
+                                product,
+                                currentBhelHalfStock
+                              )}
+                            </p>
+
+                            <p className="text-xs text-gray-400">
+                              available
+                            </p>
+
+                          </div>
+                        )
+                      )}
+
+                    </div>
+
+                  </div>
+
+
+                  {/* BHEL PRODUCTS */}
+
+                  <div className="mt-5">
+
+                    <div className="flex items-center justify-between mb-3">
+
+                      <h4 className="font-black">
+                        Bhel Products
+                      </h4>
+
+                      <span className="text-xs text-gray-500">
+                        Edit price / image
                       </span>
 
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm font-black text-brand-black">₹{prod.price}</span>
-                        <button
-                          onClick={() => handlePriceChange(prod.id)}
-                          className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5"
-                        >
-                          <Edit2 className="w-2.5 h-2.5" /> Edit Price
-                        </button>
-                      </div>
                     </div>
+
+                    <div className="space-y-3">
+
+                      {bhelProducts.map(
+                        renderBhelProduct
+                      )}
+
+                    </div>
+
                   </div>
 
-                  {/* Dynamic Stock Toggle */}
-                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-600">Stock Status:</span>
-                    <button
-                      onClick={() => handleToggleStock(prod.id, isAvail)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                        isAvail
-                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                          : 'bg-red-100 text-red-800 hover:bg-red-200'
-                      }`}
-                    >
-                      <span>{isAvail ? 'Available 🟢' : 'Out of Stock 🔴'}</span>
-                    </button>
-                  </div>
                 </div>
-              );
-            })}
+
+              </section>
+            )}
+
+
+            {/* OTHER PRODUCTS */}
+
+            <section>
+
+              <div className="flex items-center justify-between mb-4">
+
+                <div>
+
+                  <h3 className="text-xl font-black">
+                    Other Products
+                  </h3>
+
+                  <p className="text-sm text-gray-500">
+                    Price, image and stock management
+                  </p>
+
+                </div>
+
+                <div className="text-sm font-bold text-gray-500">
+                  {normalProducts.length}{' '}
+                  products
+                </div>
+
+              </div>
+
+
+              {loadingProducts ? (
+
+                <div className="bg-white rounded-3xl border p-10 text-center">
+                  Loading products...
+                </div>
+
+              ) : normalProducts.length === 0 ? (
+
+                <div className="bg-white rounded-3xl border p-10 text-center">
+
+                  <Package
+                    size={40}
+                    className="mx-auto text-gray-300"
+                  />
+
+                  <p className="font-bold mt-3">
+                    No products found
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                  {normalProducts.map(
+                    renderNormalProduct
+                  )}
+
+                </div>
+
+              )}
+
+            </section>
+
           </div>
+        )}
+
+
+        {/* ====================================================
+            TODAY'S BUSINESS TAB
+        ==================================================== */}
+
+        {activeTab === 'business' && (
+          <div className="space-y-6">
+
+
+            {/* HEADER */}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+              <div>
+
+                <h2 className="text-2xl font-black">
+                  Today's Business
+                </h2>
+
+                <p className="text-sm text-gray-500">
+                  {new Date().toLocaleDateString(
+                    'en-IN',
+                    {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    }
+                  )}
+                </p>
+
+              </div>
+
+
+              <div className="text-sm font-bold text-gray-500">
+                {todayOrders.length} total orders today
+              </div>
+
+            </div>
+
+
+            {/* ==================================================
+                MAIN BUSINESS STATS
+            ================================================== */}
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+
+              {/* TOTAL ORDERS */}
+
+              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
+
+                <p className="text-xs font-black text-gray-500">
+                  TOTAL ORDERS
+                </p>
+
+                <p className="text-3xl font-black mt-2">
+                  {todayOrders.length}
+                </p>
+
+                <p className="text-xs text-gray-400 mt-1">
+                  All orders placed today
+                </p>
+
+              </div>
+
+
+              {/* REVENUE */}
+
+              <div className="bg-green-50 rounded-3xl border border-green-100 p-5">
+
+                <p className="text-xs font-black text-green-700">
+                  TOTAL REVENUE
+                </p>
+
+                <p className="text-3xl font-black mt-2 text-green-700">
+                  ₹{todayRevenue.toFixed(0)}
+                </p>
+
+                <p className="text-xs text-green-600 mt-1">
+                  Excluding cancelled orders
+                </p>
+
+              </div>
+
+
+              {/* ITEMS SOLD */}
+
+              <div className="bg-blue-50 rounded-3xl border border-blue-100 p-5">
+
+                <p className="text-xs font-black text-blue-700">
+                  ITEMS SOLD
+                </p>
+
+                <p className="text-3xl font-black mt-2 text-blue-700">
+                  {todayItemsSold}
+                </p>
+
+                <p className="text-xs text-blue-600 mt-1">
+                  Total quantity sold
+                </p>
+
+              </div>
+
+
+              {/* AVERAGE ORDER */}
+
+              <div className="bg-brand-yellow rounded-3xl border border-yellow-300 p-5">
+
+                <p className="text-xs font-black text-black/60">
+                  AVERAGE ORDER
+                </p>
+
+                <p className="text-3xl font-black mt-2">
+                  ₹{todayAverageOrder.toFixed(0)}
+                </p>
+
+                <p className="text-xs text-black/60 mt-1">
+                  Per valid order
+                </p>
+
+              </div>
+
+            </div>
+
+
+            {/* ==================================================
+                ORDER STATUS BREAKDOWN
+            ================================================== */}
+
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
+
+              <div className="mb-5">
+
+                <h3 className="text-xl font-black">
+                  Today's Order Status
+                </h3>
+
+                <p className="text-sm text-gray-500">
+                  Exact status breakdown of today's orders
+                </p>
+
+              </div>
+
+
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+
+
+                {/* ACTIVE */}
+
+                <div className="rounded-2xl bg-yellow-50 p-4">
+
+                  <p className="text-xs font-black text-yellow-700">
+                    ACTIVE
+                  </p>
+
+                  <p className="text-2xl font-black mt-1">
+                    {todayActiveOrders}
+                  </p>
+
+                </div>
+
+
+                {/* DELIVERED */}
+
+                <div className="rounded-2xl bg-green-50 p-4">
+
+                  <p className="text-xs font-black text-green-700">
+                    DELIVERED
+                  </p>
+
+                  <p className="text-2xl font-black mt-1 text-green-700">
+                    {todayDeliveredOrders}
+                  </p>
+
+                </div>
+
+
+                {/* CANCELLED */}
+
+                <div className="rounded-2xl bg-red-50 p-4">
+
+                  <p className="text-xs font-black text-red-700">
+                    CANCELLED
+                  </p>
+
+                  <p className="text-2xl font-black mt-1 text-red-700">
+                    {todayCancelledOrders}
+                  </p>
+
+                </div>
+
+
+                {/* DELIVERY FEES */}
+
+                <div className="rounded-2xl bg-purple-50 p-4">
+
+                  <p className="text-xs font-black text-purple-700">
+                    DELIVERY FEES
+                  </p>
+
+                  <p className="text-2xl font-black mt-1 text-purple-700">
+                    ₹{todayDeliveryFees.toFixed(0)}
+                  </p>
+
+                </div>
+
+
+                {/* VALID ORDERS */}
+
+                <div className="rounded-2xl bg-gray-50 p-4">
+
+                  <p className="text-xs font-black text-gray-500">
+                    VALID ORDERS
+                  </p>
+
+                  <p className="text-2xl font-black mt-1">
+                    {validTodayOrders.length}
+                  </p>
+
+                </div>
+
+              </div>
+
+            </div>
+
+
+            {/* ==================================================
+                TODAY'S ORDERS
+            ================================================== */}
+
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
+
+              <div className="flex items-center justify-between mb-5">
+
+                <div>
+
+                  <h3 className="text-xl font-black">
+                    Today's Orders
+                  </h3>
+
+                  <p className="text-sm text-gray-500">
+                    Complete order history for today
+                  </p>
+
+                </div>
+
+                <div className="text-sm font-black">
+                  {todayOrders.length}
+                </div>
+
+              </div>
+
+
+              {todayOrders.length === 0 ? (
+
+                <div className="py-10 text-center">
+
+                  <ShoppingBag
+                    size={42}
+                    className="mx-auto text-gray-300"
+                  />
+
+                  <h4 className="font-black text-lg mt-3">
+                    No orders today
+                  </h4>
+
+                  <p className="text-sm text-gray-500 mt-1">
+                    Today's orders will appear here.
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <div className="space-y-4">
+
+                  {todayOrders
+                    .slice()
+                    .reverse()
+                    .map(renderOrderCard)}
+
+                </div>
+
+              )}
+
+            </div>
+
+          </div>
+        )}
+
+      </main>
+
+
+      {/* ======================================================
+          TOAST
+      ====================================================== */}
+
+      {toast && (
+        <div
+          className={`fixed top-5 right-5 z-[200] max-w-sm px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3 ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+
+          {toast.type === 'success' ? (
+            <CheckCircle2
+              size={20}
+              className="flex-shrink-0"
+            />
+          ) : (
+            <AlertCircle
+              size={20}
+              className="flex-shrink-0"
+            />
+          )}
+
+          <span className="font-bold text-sm">
+            {toast.message}
+          </span>
+
+          <button
+            onClick={() =>
+              setToast(null)
+            }
+            className="ml-auto opacity-80 hover:opacity-100"
+          >
+            <X size={18} />
+          </button>
+
         </div>
       )}
 
-      {/* Add New Product Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-gray-100 animate-bounce-in">
-            <h3 className="text-lg font-black text-brand-black mb-1">Add Product to Hostel Menu</h3>
-            <p className="text-xs text-gray-500 mb-4">Enter product details and base price.</p>
 
-            <form onSubmit={handleCreateProduct} className="space-y-3 text-xs">
+      {/* ======================================================
+          EDIT PRODUCT MODAL
+      ====================================================== */}
+
+      {editingProduct && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+
+          <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl">
+
+            {/* HEADER */}
+
+            <div className="sticky top-0 z-10 bg-white border-b p-5 flex items-center justify-between">
+
               <div>
-                <label className="block font-bold text-gray-700 mb-1">Product Title</label>
+
+                <h2 className="text-xl font-black">
+                  Edit Product
+                </h2>
+
+                <p className="text-xs text-gray-500 mt-1">
+                  Price, image and product details
+                </p>
+
+              </div>
+
+              <button
+                onClick={() =>
+                  setEditingProduct(
+                    null
+                  )
+                }
+                className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center"
+              >
+                <X size={19} />
+              </button>
+
+            </div>
+
+
+            <div className="p-5 space-y-5">
+
+
+              {/* IMAGE PREVIEW */}
+
+              <div className="flex justify-center">
+
+                <div className="relative">
+
+                  <div className="w-44 h-44 rounded-3xl overflow-hidden bg-gray-100 border">
+
+                    {editForm.imageUrl ? (
+                      <img
+                        src={
+                          editForm.imageUrl
+                        }
+                        alt={
+                          editForm.name
+                        }
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <ImagePlus
+                          size={42}
+                        />
+                      </div>
+                    )}
+
+                  </div>
+
+
+                  {editImageLoading && (
+                    <div className="absolute inset-0 rounded-3xl bg-black/60 text-white flex items-center justify-center font-bold">
+                      Processing...
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+
+              {/* GALLERY BUTTON */}
+
+              <label className="block cursor-pointer">
+
+                <div className="border-2 border-dashed border-gray-300 rounded-2xl p-5 text-center hover:border-brand-yellow transition">
+
+                  <Upload
+                    size={25}
+                    className="mx-auto mb-2"
+                  />
+
+                  <p className="font-black">
+                    Choose Image from Gallery
+                  </p>
+
+                  <p className="text-xs text-gray-500 mt-1">
+                    Image will be automatically compressed
+                  </p>
+
+                </div>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={
+                    handleEditImageChange
+                  }
+                />
+
+              </label>
+
+
+              {/* IMAGE URL */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Image URL
+                </label>
+
                 <input
                   type="text"
-                  required
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                  placeholder="e.g. Cheese Peri-Peri Maggie"
-                  className="w-full px-3 py-2 border rounded-xl font-bold focus:outline-none focus:border-brand-yellow"
+                  value={
+                    editForm.imageUrl
+                  }
+                  onChange={(event) =>
+                    setEditForm(
+                      (previous) => ({
+                        ...previous,
+                        imageUrl:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  placeholder="https://..."
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow"
                 />
+
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Category</label>
-                  <select
-                    value={newProduct.categoryId}
-                    onChange={(e) => setNewProduct({ ...newProduct, categoryId: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl font-bold focus:outline-none focus:border-brand-yellow"
-                  >
-                    <option value="bhel">Bhel</option>
-                    <option value="maggie">Maggie</option>
-                    <option value="snacks">Snacks</option>
-                    <option value="biscuits">Biscuits</option>
-                    <option value="cooked">Cooked</option>
-                    <option value="uncooked">Uncooked</option>
-                  </select>
-                </div>
 
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Price (₹)</label>
+              {/* NAME */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Product Name
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    editForm.name
+                  }
+                  onChange={(event) =>
+                    setEditForm(
+                      (previous) => ({
+                        ...previous,
+                        name:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow"
+                />
+
+              </div>
+
+
+              {/* PRICE */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Price
+                </label>
+
+                <div className="relative">
+
+                  <span className="absolute left-4 top-3.5 font-black">
+                    ₹
+                  </span>
+
                   <input
                     type="number"
-                    required
-                    min="1"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                    placeholder="e.g. 50"
-                    className="w-full px-3 py-2 border rounded-xl font-bold focus:outline-none focus:border-brand-yellow"
+                    min="0"
+                    value={
+                      editForm.price
+                    }
+                    onChange={(event) =>
+                      setEditForm(
+                        (previous) => ({
+                          ...previous,
+                          price:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    className="w-full pl-9 pr-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow"
                   />
+
                 </div>
+
               </div>
 
+
+              {/* DESCRIPTION */}
+
               <div>
-                <label className="block font-bold text-gray-700 mb-1">Description</label>
+
+                <label className="block text-sm font-black mb-2">
+                  Description
+                </label>
+
                 <textarea
-                  rows={2}
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  placeholder="Short description of taste and ingredients..."
-                  className="w-full px-3 py-2 border rounded-xl font-medium focus:outline-none focus:border-brand-yellow"
+                  value={
+                    editForm.description
+                  }
+                  onChange={(event) =>
+                    setEditForm(
+                      (previous) => ({
+                        ...previous,
+                        description:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow resize-none"
                 />
+
               </div>
 
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Image URL</label>
+
+              {/* AVAILABILITY */}
+
+              <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer">
+
                 <input
-                  type="url"
-                  value={newProduct.imageUrl}
-                  onChange={(e) => setNewProduct({ ...newProduct, imageUrl: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border rounded-xl font-medium focus:outline-none focus:border-brand-yellow"
+                  type="checkbox"
+                  checked={
+                    editForm.isAvailable
+                  }
+                  onChange={(event) =>
+                    setEditForm(
+                      (previous) => ({
+                        ...previous,
+                        isAvailable:
+                          event.target
+                            .checked,
+                      })
+                    )
+                  }
+                  className="w-5 h-5"
                 />
-              </div>
 
-              <div className="flex items-center gap-4 pt-1">
-                <label className="flex items-center gap-1.5 font-bold text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newProduct.isCooked}
-                    onChange={(e) => setNewProduct({ ...newProduct, isCooked: e.target.checked })}
-                    className="rounded text-brand-yellow"
-                  />
-                  <span>Cooked Item</span>
-                </label>
+                <div>
 
-                <label className="flex items-center gap-1.5 font-bold text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newProduct.allowsSpiceCustomization}
-                    onChange={(e) => setNewProduct({ ...newProduct, allowsSpiceCustomization: e.target.checked })}
-                    className="rounded text-brand-yellow"
-                  />
-                  <span>Spice Customizable</span>
-                </label>
-              </div>
+                  <p className="font-black">
+                    Product Available
+                  </p>
 
-              <div className="flex items-center gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-2.5 bg-gray-100 font-bold rounded-xl text-gray-700 hover:bg-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 py-2.5 bg-brand-yellow text-brand-black font-black rounded-xl shadow-yellow-glow hover:bg-brand-yellowHover"
-                >
-                  {loading ? 'Saving...' : 'Add Item'}
-                </button>
-              </div>
-            </form>
+                  <p className="text-xs text-gray-500">
+                    Customers can order this product
+                  </p>
+
+                </div>
+
+              </label>
+
+
+              {/* SAVE */}
+
+              <button
+                onClick={
+                  handleSaveProductEdit
+                }
+                disabled={
+                  editSaving ||
+                  editImageLoading
+                }
+                className="w-full py-4 rounded-2xl bg-brand-yellow text-black font-black text-lg disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+
+                {editSaving ? (
+                  <>
+                    <RefreshCw
+                      size={20}
+                      className="animate-spin"
+                    />
+
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check size={20} />
+
+                    Save Changes
+                  </>
+                )}
+
+              </button>
+
+            </div>
+
           </div>
+
         </div>
       )}
+
+
+      {/* ======================================================
+          ADD PRODUCT MODAL
+      ====================================================== */}
+
+      {showAddProduct && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+
+          <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl">
+
+            {/* HEADER */}
+
+            <div className="sticky top-0 z-10 bg-white border-b p-5 flex items-center justify-between">
+
+              <div>
+
+                <h2 className="text-xl font-black">
+                  Add Product
+                </h2>
+
+                <p className="text-xs text-gray-500 mt-1">
+                  Add a new item to Bhook_Lgi
+                </p>
+
+              </div>
+
+              <button
+                onClick={() =>
+                  setShowAddProduct(
+                    false
+                  )
+                }
+                className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center"
+              >
+                <X size={19} />
+              </button>
+
+            </div>
+
+
+            <div className="p-5 space-y-5">
+
+
+              {/* IMAGE PREVIEW */}
+
+              <div className="flex justify-center">
+
+                <div className="w-36 h-36 rounded-3xl overflow-hidden bg-gray-100 border">
+
+                  {newProduct.imageUrl ? (
+                    <img
+                      src={
+                        newProduct.imageUrl
+                      }
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+
+                      <ImagePlus
+                        size={32}
+                      />
+
+                      <span className="text-xs mt-2">
+                        No image
+                      </span>
+
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+
+              {/* GALLERY */}
+
+              <label className="block cursor-pointer">
+
+                <div className="border-2 border-dashed border-gray-300 rounded-2xl p-4 text-center">
+
+                  {newImageLoading ? (
+                    <p className="font-bold">
+                      Processing image...
+                    </p>
+                  ) : (
+                    <>
+
+                      <Upload
+                        size={23}
+                        className="mx-auto mb-2"
+                      />
+
+                      <p className="font-black">
+                        Upload from Gallery
+                      </p>
+
+                      <p className="text-xs text-gray-500 mt-1">
+                        Automatically compressed
+                      </p>
+
+                    </>
+                  )}
+
+                </div>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={
+                    handleNewImageChange
+                  }
+                />
+
+              </label>
+
+
+              {/* IMAGE URL */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Image URL
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    newProduct.imageUrl
+                  }
+                  onChange={(event) =>
+                    setNewProduct(
+                      (previous) => ({
+                        ...previous,
+                        imageUrl:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  placeholder="Optional image URL"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow"
+                />
+
+              </div>
+
+
+              {/* NAME */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Product Name
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    newProduct.name
+                  }
+                  onChange={(event) =>
+                    setNewProduct(
+                      (previous) => ({
+                        ...previous,
+                        name:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  placeholder="e.g. Cheese Maggi"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow"
+                />
+
+              </div>
+
+
+              {/* PRICE */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Price
+                </label>
+
+                <div className="relative">
+
+                  <span className="absolute left-4 top-3.5 font-black">
+                    ₹
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      newProduct.price
+                    }
+                    onChange={(event) =>
+                      setNewProduct(
+                        (previous) => ({
+                          ...previous,
+                          price:
+                            event.target
+                              .value,
+                        })
+                      )
+                    }
+                    placeholder="65"
+                    className="w-full pl-9 pr-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow"
+                  />
+
+                </div>
+
+              </div>
+
+
+              {/* CATEGORY */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Category
+                </label>
+
+                <select
+                  value={
+                    newProduct.categoryId
+                  }
+                  onChange={(event) =>
+                    setNewProduct(
+                      (previous) => ({
+                        ...previous,
+                        categoryId:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white outline-none focus:ring-2 focus:ring-brand-yellow"
+                >
+
+                  <option value="snacks">
+                    Snacks
+                  </option>
+
+                  <option value="bhel">
+                    Bhel
+                  </option>
+
+                  <option value="maggi">
+                    Maggi
+                  </option>
+
+                  <option value="cooked">
+                    Cooked
+                  </option>
+
+                  <option value="uncooked">
+                    Uncooked
+                  </option>
+
+                  <option value="momos">
+                    Momos
+                  </option>
+
+                </select>
+
+              </div>
+
+
+              {/* DESCRIPTION */}
+
+              <div>
+
+                <label className="block text-sm font-black mb-2">
+                  Description
+                </label>
+
+                <textarea
+                  value={
+                    newProduct.description
+                  }
+                  onChange={(event) =>
+                    setNewProduct(
+                      (previous) => ({
+                        ...previous,
+                        description:
+                          event.target
+                            .value,
+                      })
+                    )
+                  }
+                  rows={3}
+                  placeholder="Short product description"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-brand-yellow resize-none"
+                />
+
+              </div>
+
+
+              {/* OPTIONS */}
+
+              <div className="space-y-3">
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer">
+
+                  <input
+                    type="checkbox"
+                    checked={
+                      newProduct.isCooked
+                    }
+                    onChange={(event) =>
+                      setNewProduct(
+                        (previous) => ({
+                          ...previous,
+                          isCooked:
+                            event.target
+                              .checked,
+                        })
+                      )
+                    }
+                    className="w-5 h-5"
+                  />
+
+                  <span className="font-bold">
+                    Cooked product
+                  </span>
+
+                </label>
+
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer">
+
+                  <input
+                    type="checkbox"
+                    checked={
+                      newProduct.allowsSpiceCustomization
+                    }
+                    onChange={(event) =>
+                      setNewProduct(
+                        (previous) => ({
+                          ...previous,
+                          allowsSpiceCustomization:
+                            event.target
+                              .checked,
+                        })
+                      )
+                    }
+                    className="w-5 h-5"
+                  />
+
+                  <span className="font-bold">
+                    Allow spice customization
+                  </span>
+
+                </label>
+
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer">
+
+                  <input
+                    type="checkbox"
+                    checked={
+                      newProduct.isAvailable
+                    }
+                    onChange={(event) =>
+                      setNewProduct(
+                        (previous) => ({
+                          ...previous,
+                          isAvailable:
+                            event.target
+                              .checked,
+                        })
+                      )
+                    }
+                    className="w-5 h-5"
+                  />
+
+                  <span className="font-bold">
+                    Product available
+                  </span>
+
+                </label>
+
+              </div>
+
+
+              {/* CREATE */}
+
+              <button
+                onClick={
+                  handleCreateProduct
+                }
+                disabled={
+                  creatingProduct ||
+                  newImageLoading
+                }
+                className="w-full py-4 rounded-2xl bg-brand-yellow text-black font-black text-lg disabled:opacity-50"
+              >
+
+                {creatingProduct
+                  ? 'Creating...'
+                  : 'Create Product'}
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 }
