@@ -19,6 +19,7 @@ import AdminLogin from './components/admin/AdminLogin';
 import WorkWithBhookLgi from './components/work/WorkWithBhookLgi';
 import DeliveryLogin from './components/delivery/DeliveryLogin';
 import DeliveryDashboard from './components/delivery/DeliveryDashboard';
+import ZuxuStore from './components/zuxu/ZuxuStore';
 
 import { useCart } from './context/CartContext';
 import { useOrder } from './context/OrderContext';
@@ -30,6 +31,8 @@ export default function App() {
 
   const [isDeliveryView, setIsDeliveryView] = useState(false);
   const [deliveryPartner, setDeliveryPartner] = useState(null); 
+
+  
 
   const [showWorkWithBhookLgi, setShowWorkWithBhookLgi] = useState(false);
 
@@ -53,6 +56,8 @@ export default function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [isChefView, setIsChefView] = useState(false);
+  const [isZuxuView, setIsZuxuView] = useState(false);
+
 
   const { addToCart } = useCart();
   const { setActiveOrderId } = useOrder();
@@ -173,6 +178,15 @@ if (isDeliveryView && deliveryPartner) {
   );
 }
 
+
+if (isZuxuView) {
+  return (
+    <ZuxuStore
+      onBack={() => setIsZuxuView(false)}
+    />
+  );
+}
+
     if (activeTab === 'all-orders') {
       return (
         <OrdersListPage
@@ -190,6 +204,7 @@ if (isDeliveryView && deliveryPartner) {
         <OrderTrackingView
           onBackToMenu={() => setActiveTab('home')}
           onOpenAllOrders={() => setActiveTab('all-orders')}
+          onExploreZuxu={() => setIsZuxuView(true)}
         />
       );
     }
@@ -345,6 +360,10 @@ if (isDeliveryView && deliveryPartner) {
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             onOpenCart={() => setIsCartOpen(true)}
+            onOpenZuxu={() => {
+            setIsAdminView(false);
+            setIsZuxuView(true);
+            }}
           />
         </div>
 

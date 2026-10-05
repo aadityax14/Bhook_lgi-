@@ -1,10 +1,50 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { WhatsAppNotificationService } from '../services/whatsappService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(__dirname, '../data/db.json');
+
+const INITIAL_SELLERS = [
+  {
+    id: 'seller-bhook-lgi',
+    storeId: 'store-bhook-lgi',
+    name: 'Bhook_Lgi Official',
+    handle: 'bhook_lgi',
+    category: 'Food & Snacks',
+    description: 'Late night student hostel kitchen - Fresh Bhel, piping hot Maggi & snacks.',
+    avatar: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=400&q=80',
+    banner: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80',
+    status: 'active',
+    whatsapp: {
+      number: '+919999988888',
+      notifyOnNewOrder: true,
+      notifyOnStatusChange: true
+    },
+    commissionRate: 0.05,
+    createdAt: new Date('2026-09-01T00:00:00.000Z').toISOString()
+  },
+  {
+    id: 'seller-zuxu',
+    storeId: 'store-zuxu',
+    name: 'Zuxu',
+    handle: 'zuxu',
+    category: 'Handmade Gifts & Accessories',
+    description: 'Handcrafted with love for students. Cute hairpins, rings, earrings, keychains, crochet gifts & custom bouquets.',
+    avatar: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=400&q=80',
+    banner: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=1200&q=80',
+    status: 'active',
+    whatsapp: {
+      number: '+919876543210',
+      notifyOnNewOrder: true,
+      notifyOnStatusChange: true
+    },
+    commissionRate: 0.10,
+    createdAt: new Date('2026-09-15T00:00:00.000Z').toISOString()
+  }
+];
 
 const INITIAL_CATEGORIES = [
   { id: 'all', name: 'All Items', slug: 'all', icon: '🔥' },
@@ -13,7 +53,12 @@ const INITIAL_CATEGORIES = [
   { id: 'snacks', name: 'Snacks', slug: 'snacks', icon: '🍿' },
   { id: 'biscuits', name: 'Biscuits', slug: 'biscuits', icon: '🍪' },
   { id: 'cooked', name: 'Cooked', slug: 'cooked', icon: '🥡' },
-  { id: 'uncooked', name: 'Uncooked', slug: 'uncooked', icon: '📦' }
+  { id: 'uncooked', name: 'Uncooked', slug: 'uncooked', icon: '📦' },
+  { id: 'accessories', name: 'Accessories', slug: 'accessories', icon: '✨' },
+  { id: 'crochet', name: 'Crochet Crafts', slug: 'crochet', icon: '🧶' },
+  { id: 'jewelry', name: 'Jewelry', slug: 'jewelry', icon: '💍' },
+  { id: 'bouquets', name: 'Bouquets', slug: 'bouquets', icon: '💐' },
+  { id: 'gifts', name: 'Gifts & Sets', slug: 'gifts', icon: '🎁' }
 ];
 
 const INITIAL_PRODUCTS = [

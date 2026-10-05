@@ -97,8 +97,7 @@ export default function Header({ onOpenCart, onOpenNotifications, onLogoClick, o
             {/* Cart Button */}
             <button
               onClick={onOpenCart}
-              className="relative flex items-center gap-2 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black px-3 py-1.5 rounded-2xl font-bold text-sm shadow-yellow-glow transition-all active:scale-95  hover:scale-105"
-              aria-label="Open Cart"
+              className="relative hidden sm:flex items-center gap-2 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black px-3 py-1.5 rounded-2xl font-bold text-sm shadow-yellow-glow transition-all active:scale-95 hover:scale-105"
             >
               <ShoppingBag className="w-6 h-6" />
               <span className="hidden xs:inline">Cart</span>

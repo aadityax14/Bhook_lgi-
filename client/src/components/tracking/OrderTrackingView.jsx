@@ -41,7 +41,7 @@ const STAGES = [
   }
 ];
 
-export default function OrderTrackingView({ onBackToMenu, onOpenAllOrders }) {
+export default function OrderTrackingView({ onBackToMenu, onOpenAllOrders, onExploreZuxu }) {
   const { activeOrder, fetchOrders } = useOrder();
 
   useEffect(() => {
@@ -296,6 +296,55 @@ export default function OrderTrackingView({ onBackToMenu, onOpenAllOrders }) {
           </a>
         </div>
       </div>
+      {/* Zuxu Cross Promotion */}
+{isDelivered && (
+  <div className="relative overflow-hidden bg-white rounded-3xl p-5 shadow-soft border border-gray-100">
+
+    {/* Decorative glow */}
+    <div className="absolute -right-10 -top-10 w-32 h-32 bg-brand-yellow/20 rounded-full blur-3xl" />
+
+    <div className="relative flex items-center gap-4">
+
+      {/* Text */}
+      <div className="flex-1">
+
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-yellowLight text-brand-black text-[10px] font-black mb-2">
+          🎁 Something cute?
+        </div>
+
+        <h3 className="text-lg font-black text-brand-black leading-tight">
+          Looking for something cute?
+        </h3>
+
+        <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+          Discover handmade gifts and cute accessories from{' '}
+          <span className="font-black text-brand-black">
+            Zuxu
+          </span>{' '}
+          ❤️
+        </p>
+
+        <button
+          onClick={onExploreZuxu}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-brand-black text-brand-yellow rounded-xl text-xs font-black hover:bg-gray-800 active:scale-95 transition-all"
+        >
+          Explore Zuxu
+          <span>→</span>
+        </button>
+
+      </div>
+
+      {/* Gift visual */}
+      <div className="shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-brand-yellowLight flex items-center justify-center text-5xl">
+        🧶
+      </div>
+
     </div>
+
+  </div>
+)}
+    </div>
+
+    
   );
 }
