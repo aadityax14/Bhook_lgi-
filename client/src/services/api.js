@@ -80,6 +80,26 @@ export const api = {
       method: 'POST',
     }),
 
+    // Authentication
+  login: (credentials) =>
+    fetchJSON('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    }),
+
+  createAccount: (accountData) =>
+    fetchJSON('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(accountData),
+    }),
+
+  getCurrentUser: (token) =>
+    fetchJSON('/auth/me', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
   // Health
   checkHealth: () => fetchJSON('/health'),
 };
