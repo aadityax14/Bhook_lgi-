@@ -8,11 +8,7 @@ import React, {
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  /*
-   * Keep the existing demo user for now.
-   * We will later make unauthenticated users = null
-   * after we safely update the rest of the app.
-   */
+  // Default profile details are kept for existing app UI compatibility.
   const [user, setUser] = useState({
     name: 'Aaditya Yadav',
     phone: '9876543210',
@@ -22,63 +18,78 @@ export function AuthProvider({ children }) {
   });
 
   const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const [isAdminView, setIsAdminView] = useState(false);
   const [isMobileFrame, setIsMobileFrame] = useState(false);
 
-  /*
-   * Restore the previously logged-in user
-   * when the website is opened again.
-   */
+  // Restore login details when the app opens or refreshes.
   useEffect(() => {
     const savedUser = localStorage.getItem('bhook_user');
+    const savedToken = localStorage.getItem('bhook_token');
 
-    if (savedUser) {
+    if (savedUser && savedToken) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsedUser = JSON.parse(savedUser);
+
+        setUser(parsedUser);
+        setIsAuthenticated(true);
       } catch (error) {
         console.error('Invalid saved user:', error);
 
         localStorage.removeItem('bhook_user');
         localStorage.removeItem('bhook_token');
+
+        setIsAuthenticated(false);
       }
+    } else {
+      setIsAuthenticated(false);
     }
 
     setAuthLoading(false);
   }, []);
 
-  /*
-   * Called after successful login or account creation.
-   */
+  // Called after successful login or account creation.
   const login = (userData, token) => {
+    if (!userData || !token) {
+      console.error('Login failed: user data or token is missing.');
+      setIsAuthenticated(false);
+      return false;
+    }
+
     setUser(userData);
+    setIsAuthenticated(true);
 
     localStorage.setItem(
       'bhook_user',
       JSON.stringify(userData)
     );
 
-    if (token) {
-      localStorage.setItem(
-        'bhook_token',
-        token
-      );
-    }
+    localStorage.setItem(
+      'bhook_token',
+      token
+    );
+
+    return true;
   };
 
-  /*
-   * Sign out the current user.
-   */
+  // Sign out the current user.
   const logout = () => {
-    setUser(null);
+    setUser({
+      name: 'Aaditya Yadav',
+      phone: '9876543210',
+      hostel: 'GH4',
+      roomNumber: '312',
+      role: 'student'
+    });
+
+    setIsAuthenticated(false);
 
     localStorage.removeItem('bhook_user');
     localStorage.removeItem('bhook_token');
   };
 
-  /*
-   * Update details of the currently logged-in user.
-   */
+  // Update user details.
   const updateUser = (fields) => {
     setUser(prev => {
       if (!prev) return prev;
@@ -88,18 +99,18 @@ export function AuthProvider({ children }) {
         ...fields
       };
 
-      localStorage.setItem(
-        'bhook_user',
-        JSON.stringify(updatedUser)
-      );
+      if (isAuthenticated) {
+        localStorage.setItem(
+          'bhook_user',
+          JSON.stringify(updatedUser)
+        );
+      }
 
       return updatedUser;
     });
   };
 
-  /*
-   * Existing admin-view functionality.
-   */
+  // Existing admin-view functionality.
   const toggleAdmin = () => {
     setIsAdminView(prev => !prev);
   };
@@ -115,6 +126,7 @@ export function AuthProvider({ children }) {
         updateUser,
 
         authLoading,
+        isAuthenticated,
 
         isAdminView,
         setIsAdminView,

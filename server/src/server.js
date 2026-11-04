@@ -6,6 +6,7 @@ import ordersRouter from './routes/orders.js';
 import notificationsRouter from './routes/notifications.js';
 import authRouter from './routes/auth.js';
 import { testDatabaseConnection } from './db/postgres.js';
+import staffRouter from './routes/staff.js';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Route registration
+app.use('/api/staff', staffRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/categories', (req, res) => res.redirect('/api/products/categories'));
 app.use('/api/orders', ordersRouter);

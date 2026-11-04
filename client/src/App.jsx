@@ -307,23 +307,6 @@ if (isZuxuView) {
             </div>
           )}
 
-          <button
-  onClick={() => {
-    setIsDeliveryView(true);
-    setDeliveryPartner(null);
-  }}
-  className="fixed bottom-24 left-4 z-50 px-4 py-3 rounded-2xl bg-brand-yellow text-brand-black font-black shadow-xl"
->
-  🛵 Delivery Login
-</button>
-
-          <button
-  onClick={() => setIsChefView(true)}
-  className="fixed bottom-24 right-4 z-50 bg-black text-white px-4 py-3 rounded-xl font-bold shadow-lg"
->
-  👨‍🍳 Chef Panel
-</button>
-
           {/* Top Header */}
           <Header
   onOpenCart={() => setIsCartOpen(true)}
@@ -374,9 +357,35 @@ if (isZuxuView) {
         />
 
         {showWorkWithBhookLgi && (
-  <WorkWithBhookLgi
-    onClose={() => setShowWorkWithBhookLgi(false)}
-  />
+  <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="w-full max-w-sm rounded-3xl bg-brand-cream p-6 text-center shadow-2xl">
+
+      <div className="text-5xl mb-4">🚀</div>
+
+      <h2 className="text-2xl font-black text-brand-black">
+        Coming Soon!
+      </h2>
+
+      <p className="mt-3 text-sm text-gray-600">
+        We're working on something exciting.
+        Staff applications for Bhook_Lgi will open soon.
+      </p>
+
+      <div className="mt-5 rounded-xl bg-brand-yellow/30 p-3">
+        <p className="font-bold text-sm">
+          Earn. Learn. Grow.
+        </p>
+      </div>
+
+      <button
+        onClick={() => setShowWorkWithBhookLgi(false)}
+        className="mt-5 w-full rounded-xl bg-brand-black py-3 font-black text-brand-yellow"
+      >
+        Okay
+      </button>
+
+    </div>
+  </div>
 )}
 
         <CartDrawer

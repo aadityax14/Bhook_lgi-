@@ -102,4 +102,50 @@ export const api = {
 
   // Health
   checkHealth: () => fetchJSON('/health'),
+
+  
+  // Staff Applications
+  submitStaffApplication: (applicationData) =>
+    fetchJSON('/staff/applications', {
+      method: 'POST',
+      body: JSON.stringify(applicationData),
+    }),
+
+    
+submitStaffApplication: (application) =>
+  fetchJSON('/staff/applications', {
+    method: 'POST',
+    body: JSON.stringify(application),
+  }),
+
+getStaffApplicationStatus: (mobile, studentId) => {
+  const params = new URLSearchParams({ mobile, studentId });
+  return fetchJSON(`/staff/applications/status?${params.toString()}`);
+},
+
+staffAdminLogin: (credentials) =>
+  fetchJSON('/staff/admin/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  }),
+
+getStaffApplications: (token) =>
+  fetchJSON('/staff/applications', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }),
+
+decideStaffApplication: (id, decision, token) =>
+  fetchJSON(`/staff/applications/${id}/decision`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ decision }),
+  }),
+
+
 };
+
+

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -1143,36 +1144,47 @@ export default function AdminDashboard({
       );
     }
 
-    if (
-      order.status === 'ready'
-    ) {
-      return (
-        <div className="px-4 py-2 rounded-xl bg-green-100 text-green-700 font-bold">
-          Ready for Delivery
-        </div>
-      );
-    }
+ if (order.status === 'ready') {
+  return (
+    <button
+      disabled={saving}
+      onClick={() =>
+        handleOrderStatusChange(order.id, 'out_for_delivery')
+      }
+      className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold disabled:opacity-50"
+    >
+      {saving ? 'Updating...' : 'Mark Out for Delivery'}
+    </button>
+  );
+}
 
-    if (
-      order.status ===
-      'out_for_delivery'
-    ) {
-      return (
-        <div className="px-4 py-2 rounded-xl bg-blue-100 text-blue-700 font-bold">
-          Out for Delivery
-        </div>
-      );
-    }
+if (order.status === 'out_for_delivery') {
+  return (
+    <button
+      disabled={saving}
+      onClick={() =>
+        handleOrderStatusChange(order.id, 'delivered')
+      }
+      className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50"
+    >
+      {saving ? 'Updating...' : 'Mark Delivered'}
+    </button>
+  );
+}
 
-    if (
-      order.status === 'delivered'
-    ) {
-      return (
-        <div className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 font-bold">
-          Delivered
-        </div>
-      );
-    }
+if (order.status === 'delivered') {
+  return (
+    <button
+      disabled={saving}
+      onClick={() =>
+        handleOrderStatusChange(order.id, 'out_for_delivery')
+      }
+      className="px-4 py-2 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"
+    >
+      {saving ? 'Updating...' : 'Undo Delivery'}
+    </button>
+  );
+}
 
     if (
       order.status === 'cancelled'
@@ -1763,6 +1775,8 @@ export default function AdminDashboard({
 
             </button>
 
+            
+
           </div>
 
         </div>
@@ -1864,9 +1878,13 @@ export default function AdminDashboard({
 
                 <div>
 
-                  <h2 className="text-xl font-black">
-                    Active Orders
-                  </h2>
+                 <h2 className="text-xl font-black">
+                  All Orders
+                </h2>
+
+                  <p className="text-sm text-gray-500">
+                        View and manage every order, including delivered and cancelled orders.
+                  </p>
 
                   <p className="text-sm text-gray-500">
                     Manage your incoming orders
@@ -1877,36 +1895,41 @@ export default function AdminDashboard({
               </div>
 
 
-              {activeOrders.length === 0 ? (
+{orders.length === 0 ? (
 
-                <div className="bg-white rounded-3xl border p-10 text-center">
+  <div className="bg-white rounded-3xl border p-10 text-center">
 
-                  <ShoppingBag
-                    size={42}
-                    className="mx-auto text-gray-300"
-                  />
+    <ShoppingBag
+      size={42}
+      className="mx-auto text-gray-300"
+    />
 
-                  <h3 className="font-black text-lg mt-3">
-                    No active orders
-                  </h3>
+    <h3 className="font-black text-lg mt-3">
+      No orders yet
+    </h3>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    New orders will appear here.
-                  </p>
+    <p className="text-sm text-gray-500 mt-1">
+      New customer orders will appear here.
+    </p>
 
-                </div>
+  </div>
 
-              ) : (
+) : (
 
-                <div className="space-y-4">
+  <div className="space-y-4">
 
-                  {activeOrders.map(
-                    renderOrderCard
-                  )}
+    {orders
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt) -
+          new Date(a.createdAt)
+      )
+      .map(renderOrderCard)}
 
-                </div>
+  </div>
 
-              )}
+)}
 
             </div>
 
@@ -2208,6 +2231,10 @@ export default function AdminDashboard({
                       year: 'numeric',
                     }
                   )}
+
+             
+
+                  
                 </p>
 
               </div>
@@ -2218,6 +2245,10 @@ export default function AdminDashboard({
               </div>
 
             </div>
+
+            
+
+            
 
 
             {/* ==================================================
@@ -2468,9 +2499,13 @@ export default function AdminDashboard({
             </div>
 
           </div>
-        )}
+                )}
+
+      
 
       </main>
+
+      
 
 
       {/* ======================================================
