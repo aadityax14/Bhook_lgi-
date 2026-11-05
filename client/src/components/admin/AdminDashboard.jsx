@@ -1,4 +1,4 @@
-
+import BannerManager from './BannerManager';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -1775,6 +1775,18 @@ if (order.status === 'delivered') {
 
             </button>
 
+            <button
+  onClick={() => setActiveTab('banners')}
+  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+    activeTab === 'banners'
+      ? 'bg-black text-white'
+      : 'bg-gray-100 text-gray-600'
+  }`}
+>
+  <ImagePlus size={17} />
+  Homepage Slides
+</button>
+
             
 
           </div>
@@ -2335,7 +2347,6 @@ if (order.status === 'delivered') {
 
             </div>
 
-
             {/* ==================================================
                 ORDER STATUS BREAKDOWN
             ================================================== */}
@@ -2502,6 +2513,11 @@ if (order.status === 'delivered') {
                 )}
 
       
+
+        {/* HOMEPAGE SLIDES TAB */}
+        {activeTab === 'banners' && (
+          <BannerManager />
+        )}
 
       </main>
 
