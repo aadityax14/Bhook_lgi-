@@ -191,6 +191,7 @@ export default function AdminDashboard({
     categoryId: 'snacks',
     description: '',
     imageUrl: '',
+    images: [],
     isCooked: false,
     allowsSpiceCustomization: false,
     isAvailable: true,
@@ -211,6 +212,7 @@ export default function AdminDashboard({
     name: '',
     price: '',
     imageUrl: '',
+    images: [],
     description: '',
     isAvailable: true,
   });
@@ -333,11 +335,22 @@ export default function AdminDashboard({
   }, [products]);
 
 
-  const normalProducts = useMemo(() => {
-    return products.filter(
-      (product) => !isBhelProduct(product)
-    );
-  }, [products]);
+  const zuxuProducts = useMemo(() => {
+  return products.filter(
+    (product) =>
+      product.storeId === 'store-zuxu' ||
+      product.categoryId === 'zuxu'
+  );
+}, [products]);
+
+const normalProducts = useMemo(() => {
+  return products.filter(
+    (product) =>
+      !isBhelProduct(product) &&
+      product.storeId !== 'store-zuxu' &&
+      String(product.categoryId || '').toLowerCase() !== 'zuxu'
+  );
+}, [products]);
 
 
   // ==========================================================
@@ -657,6 +670,9 @@ export default function AdminDashboard({
         product.price ?? ''
       ),
       imageUrl: product.imageUrl || '',
+      images: Array.isArray(product.images) && product.images.length
+        ? product.images.slice(0, 5)
+        : (product.imageUrl ? [product.imageUrl] : []),
       description:
         product.description || '',
       isAvailable:
@@ -669,40 +685,47 @@ export default function AdminDashboard({
   // EDIT GALLERY IMAGE
   // ==========================================================
 
-  const handleEditImageChange = async (
-    event
-  ) => {
-    const file =
-      event.target.files?.[0];
+  const handleEditImageChange = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
 
-    if (!file) return;
+    const isZuxu = editingProduct?.categoryId === 'zuxu';
+    const currentImages = Array.isArray(editForm.images) ? editForm.images : [];
+    const allowedFiles = isZuxu ? files.slice(0, Math.max(0, 5 - currentImages.length)) : files.slice(0, 1);
+
+    if (isZuxu && files.length > allowedFiles.length) {
+      showToast('error', 'A Zuxu product can have a maximum of 5 images');
+    }
+
+    if (!allowedFiles.length) {
+      event.target.value = '';
+      return;
+    }
 
     try {
       setEditImageLoading(true);
-
-      const compressedImage =
-        await compressImage(file);
-
-      setEditForm((previous) => ({
-        ...previous,
-        imageUrl: compressedImage,
-      }));
-
-      showToast(
-        'success',
-        'Image selected ✓'
-      );
+      const compressedImages = await Promise.all(allowedFiles.map(compressImage));
+      setEditForm((previous) => {
+        const existing = Array.isArray(previous.images) ? previous.images : [];
+        const images = isZuxu
+          ? [...existing, ...compressedImages].slice(0, 5)
+          : compressedImages;
+        return { ...previous, images, imageUrl: images[0] || '' };
+      });
+      showToast('success', 'Image(s) selected ✓');
     } catch (error) {
-      showToast(
-        'error',
-        error.message ||
-          'Could not process image'
-      );
+      showToast('error', error.message || 'Could not process image');
     } finally {
       setEditImageLoading(false);
-
       event.target.value = '';
     }
+  };
+
+  const handleRemoveEditImage = (index) => {
+    setEditForm((previous) => {
+      const images = (previous.images || []).filter((_, i) => i !== index);
+      return { ...previous, images, imageUrl: images[0] || '' };
+    });
   };
 
 
@@ -710,40 +733,47 @@ export default function AdminDashboard({
   // NEW PRODUCT GALLERY IMAGE
   // ==========================================================
 
-  const handleNewImageChange = async (
-    event
-  ) => {
-    const file =
-      event.target.files?.[0];
+  const handleNewImageChange = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
 
-    if (!file) return;
+    const isZuxu = newProduct.categoryId === 'zuxu';
+    const currentImages = Array.isArray(newProduct.images) ? newProduct.images : [];
+    const allowedFiles = isZuxu ? files.slice(0, Math.max(0, 5 - currentImages.length)) : files.slice(0, 1);
+
+    if (isZuxu && files.length > allowedFiles.length) {
+      showToast('error', 'A Zuxu product can have a maximum of 5 images');
+    }
+
+    if (!allowedFiles.length) {
+      event.target.value = '';
+      return;
+    }
 
     try {
       setNewImageLoading(true);
-
-      const compressedImage =
-        await compressImage(file);
-
-      setNewProduct((previous) => ({
-        ...previous,
-        imageUrl: compressedImage,
-      }));
-
-      showToast(
-        'success',
-        'Image selected ✓'
-      );
+      const compressedImages = await Promise.all(allowedFiles.map(compressImage));
+      setNewProduct((previous) => {
+        const existing = Array.isArray(previous.images) ? previous.images : [];
+        const images = isZuxu
+          ? [...existing, ...compressedImages].slice(0, 5)
+          : compressedImages;
+        return { ...previous, images, imageUrl: images[0] || '' };
+      });
+      showToast('success', 'Image(s) selected ✓');
     } catch (error) {
-      showToast(
-        'error',
-        error.message ||
-          'Could not process image'
-      );
+      showToast('error', error.message || 'Could not process image');
     } finally {
       setNewImageLoading(false);
-
       event.target.value = '';
     }
+  };
+
+  const handleRemoveNewImage = (index) => {
+    setNewProduct((previous) => {
+      const images = (previous.images || []).filter((_, i) => i !== index);
+      return { ...previous, images, imageUrl: images[0] || '' };
+    });
   };
 
 
@@ -792,7 +822,10 @@ export default function AdminDashboard({
               name,
               price,
               imageUrl:
-                editForm.imageUrl,
+                editForm.images?.[0] || editForm.imageUrl,
+              images: editingProduct.categoryId === 'zuxu'
+                ? (editForm.images || []).slice(0, 5)
+                : (editForm.imageUrl ? [editForm.imageUrl] : []),
               description:
                 editForm.description,
               isAvailable:
@@ -880,6 +913,15 @@ export default function AdminDashboard({
           await api.createProduct({
             name,
             price,
+            storeId:
+  newProduct.categoryId === 'zuxu'
+    ? 'store-zuxu'
+    : 'store-bhook-lgi',
+
+productType:
+  newProduct.categoryId === 'zuxu'
+    ? 'handmade'
+    : 'food',
             categoryId:
               newProduct.categoryId ||
               'snacks',
@@ -889,8 +931,15 @@ export default function AdminDashboard({
               '',
 
             imageUrl:
-              newProduct.imageUrl ||
-              '',
+              newProduct.images?.[0] || newProduct.imageUrl || '',
+            images: newProduct.categoryId === 'zuxu'
+              ? (newProduct.images || []).slice(0, 5)
+              : (newProduct.imageUrl ? [newProduct.imageUrl] : []),
+
+
+              storeId: newProduct.storeId,
+productType:
+  newProduct.storeId === 'store-zuxu' ? 'handmade' : 'food',
 
             isCooked:
               Boolean(
@@ -906,6 +955,12 @@ export default function AdminDashboard({
               Boolean(
                 newProduct.isAvailable
               ),
+
+            // Zuxu items use normal stock. Start with 10 available
+            // so a newly created item is visible in the Zuxu storefront.
+            ...(newProduct.categoryId === 'zuxu'
+              ? { stockQuantity: 10 }
+              : {}),
           });
 
         if (!response?.data) {
@@ -919,12 +974,15 @@ export default function AdminDashboard({
           response.data,
         ]);
 
+        
+
         setNewProduct({
           name: '',
           price: '',
           categoryId: 'snacks',
           description: '',
           imageUrl: '',
+          images: [],
           isCooked: false,
           allowsSpiceCustomization: false,
           isAvailable: true,
@@ -953,6 +1011,8 @@ export default function AdminDashboard({
         setCreatingProduct(false);
       }
     };
+
+    
 
 
   // ==========================================================
@@ -1424,6 +1484,11 @@ if (order.status === 'delivered') {
                 <p className="text-sm text-gray-500">
                   ₹{product.price}
                 </p>
+                {String(product.categoryId || '').toLowerCase() === 'zuxu' && (
+                  <span className="inline-flex mt-1 px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-black">
+                    ZUXU
+                  </span>
+                )}
 
               </div>
 
@@ -1753,6 +1818,27 @@ if (order.status === 'delivered') {
 
               Inventory
 
+            </button>
+
+
+            {/* ZUXU PRODUCTS */}
+            <button
+              onClick={() => setActiveTab('zuxu')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'zuxu'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <Package size={17} />
+              Zuxu Products
+              {zuxuProducts.length > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs ${
+                  activeTab === 'zuxu' ? 'bg-white text-black' : 'bg-black text-white'
+                }`}>
+                  {zuxuProducts.length}
+                </span>
+              )}
             </button>
 
 
@@ -2219,6 +2305,66 @@ if (order.status === 'delivered') {
             TODAY'S BUSINESS TAB
         ==================================================== */}
 
+        {/* ====================================================
+            ZUXU PRODUCTS TAB
+        ==================================================== */}
+        {activeTab === 'zuxu' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-black">Zuxu Products</h2>
+                <p className="text-sm text-gray-500">
+                  Manage Zuxu gifts, crochet items, jewellery, prices, images and stock.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setNewProduct({
+                    name: '',
+                    price: '',
+                    storeId: 'store-zuxu',
+                    categoryId: 'zuxu',
+                    description: '',
+                    imageUrl: '',
+                    images: [],
+                    isCooked: false,
+                    allowsSpiceCustomization: false,
+                    isAvailable: true,
+                  });
+                  setShowAddProduct(true);
+                }}
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand-yellow text-black font-black"
+              >
+                <Plus size={19} /> Add Zuxu Product
+              </button>
+            </div>
+
+            {loadingProducts ? (
+              <div className="bg-white rounded-3xl border p-10 text-center">
+                Loading Zuxu products...
+              </div>
+            ) : zuxuProducts.length === 0 ? (
+              <div className="bg-white rounded-3xl border p-10 text-center">
+                <Package size={40} className="mx-auto text-gray-300" />
+                <p className="font-bold mt-3">No Zuxu products found</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Add your first Zuxu product using the button above.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="text-sm font-bold text-gray-500">
+                  {zuxuProducts.length} Zuxu product{zuxuProducts.length === 1 ? '' : 's'}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {zuxuProducts.map(renderNormalProduct)}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+
         {activeTab === 'business' && (
           <div className="space-y-6">
 
@@ -2648,6 +2794,20 @@ if (order.status === 'delivered') {
               </div>
 
 
+              {editingProduct?.categoryId === 'zuxu' && (editForm.images || []).length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {(editForm.images || []).map((image, index) => (
+                    <div key={`${index}-${image.slice(0, 20)}`} className="relative">
+                      <img src={image} alt={`Product image ${index + 1}`} className="w-full h-24 object-cover rounded-xl border" />
+                      <button type="button" onClick={() => handleRemoveEditImage(index)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1">
+                        <X size={14} />
+                      </button>
+                      {index === 0 && <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-2 py-1 rounded">Main</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* GALLERY BUTTON */}
 
               <label className="block cursor-pointer">
@@ -2672,10 +2832,9 @@ if (order.status === 'delivered') {
                 <input
                   type="file"
                   accept="image/*"
+                  multiple={editingProduct?.categoryId === 'zuxu'}
                   className="hidden"
-                  onChange={
-                    handleEditImageChange
-                  }
+                  onChange={handleEditImageChange}
                 />
 
               </label>
@@ -2698,9 +2857,10 @@ if (order.status === 'delivered') {
                     setEditForm(
                       (previous) => ({
                         ...previous,
-                        imageUrl:
-                          event.target
-                            .value,
+                        imageUrl: event.target.value,
+                        ...(editingProduct?.categoryId === 'zuxu'
+                          ? { images: event.target.value ? [event.target.value, ...(previous.images || []).slice(1, 5)] : (previous.images || []).slice(1, 5) }
+                          : {}),
                       })
                     )
                   }
@@ -2900,11 +3060,13 @@ if (order.status === 'delivered') {
               <div>
 
                 <h2 className="text-xl font-black">
-                  Add Product
+                  {newProduct.categoryId === 'zuxu' ? 'Add Zuxu Product' : 'Add Product'}
                 </h2>
 
                 <p className="text-xs text-gray-500 mt-1">
-                  Add a new item to Bhook_Lgi
+                  {newProduct.categoryId === 'zuxu'
+                    ? 'Add a gift or handmade item to the Zuxu store'
+                    : 'Add a new item to Bhook_Lgi'}
                 </p>
 
               </div>
@@ -2959,6 +3121,20 @@ if (order.status === 'delivered') {
               </div>
 
 
+              {newProduct.categoryId === 'zuxu' && (newProduct.images || []).length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {(newProduct.images || []).map((image, index) => (
+                    <div key={`${index}-${image.slice(0, 20)}`} className="relative">
+                      <img src={image} alt={`Product image ${index + 1}`} className="w-full h-24 object-cover rounded-xl border" />
+                      <button type="button" onClick={() => handleRemoveNewImage(index)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1">
+                        <X size={14} />
+                      </button>
+                      {index === 0 && <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-2 py-1 rounded">Main</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* GALLERY */}
 
               <label className="block cursor-pointer">
@@ -2993,10 +3169,9 @@ if (order.status === 'delivered') {
                 <input
                   type="file"
                   accept="image/*"
+                  multiple={newProduct.categoryId === 'zuxu'}
                   className="hidden"
-                  onChange={
-                    handleNewImageChange
-                  }
+                  onChange={handleNewImageChange}
                 />
 
               </label>
@@ -3019,9 +3194,10 @@ if (order.status === 'delivered') {
                     setNewProduct(
                       (previous) => ({
                         ...previous,
-                        imageUrl:
-                          event.target
-                            .value,
+                        imageUrl: event.target.value,
+                        ...(newProduct.categoryId === 'zuxu'
+                          ? { images: event.target.value ? [event.target.value, ...(previous.images || []).slice(1, 5)] : (previous.images || []).slice(1, 5) }
+                          : {}),
                       })
                     )
                   }
@@ -3148,6 +3324,10 @@ if (order.status === 'delivered') {
 
                   <option value="momos">
                     Momos
+                  </option>
+
+                  <option value="zuxu">
+                    Zuxu Products
                   </option>
 
                 </select>
@@ -3287,7 +3467,9 @@ if (order.status === 'delivered') {
 
                 {creatingProduct
                   ? 'Creating...'
-                  : 'Create Product'}
+                  : newProduct.categoryId === 'zuxu'
+                    ? 'Add Zuxu Product'
+                    : 'Create Product'}
 
               </button>
 
