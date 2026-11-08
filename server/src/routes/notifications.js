@@ -4,9 +4,9 @@ import { store } from '../db/store.js';
 const router = express.Router();
 
 // GET /api/notifications
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const notifications = store.getNotifications();
+    const notifications = await store.getNotifications();
     const unreadCount = notifications.filter(n => !n.isRead).length;
     res.json({ success: true, unreadCount, data: notifications });
   } catch (err) {
@@ -15,9 +15,9 @@ router.get('/', (req, res) => {
 });
 
 // PATCH /api/notifications/:id/read
-router.patch('/:id/read', (req, res) => {
+router.patch('/:id/read', async (req, res) => {
   try {
-    const updated = store.markNotificationAsRead(req.params.id);
+    const updated = await store.markNotificationAsRead(req.params.id);
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Notification not found' });
     }
@@ -28,9 +28,9 @@ router.patch('/:id/read', (req, res) => {
 });
 
 // POST /api/notifications/read-all
-router.post('/read-all', (req, res) => {
+router.post('/read-all', async (req, res) => {
   try {
-    store.markAllNotificationsAsRead();
+    await store.markAllNotificationsAsRead();
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

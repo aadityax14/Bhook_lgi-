@@ -5,7 +5,7 @@ import productsRouter from './routes/products.js';
 import ordersRouter from './routes/orders.js';
 import notificationsRouter from './routes/notifications.js';
 import authRouter from './routes/auth.js';
-import { testDatabaseConnection } from './db/postgres.js';
+import { initDatabase } from './db/migrate.js';
 import staffRouter from './routes/staff.js';
 
 dotenv.config();
@@ -56,12 +56,18 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
 });
 
-app.listen(PORT, async () => {
+// All data lives in PostgreSQL, so don't accept requests until it's ready.
+try {
+  await initDatabase();
+} catch (err) {
+  console.error('❌ PostgreSQL setup failed:', err.message);
+  process.exit(1);
+}
+
+app.listen(PORT, () => {
   console.log(`===========================================`);
   console.log(`  🚀 Bhook_Lgi API running on port ${PORT}`);
   console.log(`  🌙 Products: http://localhost:${PORT}/api/products`);
   console.log(`  📦 Orders: http://localhost:${PORT}/api/orders`);
   console.log(`===========================================`);
-
-  await testDatabaseConnection();
 });

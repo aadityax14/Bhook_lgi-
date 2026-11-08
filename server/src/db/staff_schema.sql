@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS staff_applications (
     student_id VARCHAR(80) NOT NULL,
 
     role VARCHAR(20) NOT NULL
-        CHECK (role IN ('CHEF', 'DELIVERY')),
+        CHECK (role IN ('chef', 'delivery')),
 
     days_per_week SMALLINT NOT NULL
         CHECK (days_per_week BETWEEN 1 AND 7),
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS staff_accounts (
     password_hash TEXT NOT NULL,
 
     role VARCHAR(20) NOT NULL
-        CHECK (role IN ('CHEF', 'DELIVERY')),
+        CHECK (role IN ('chef', 'delivery')),
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
