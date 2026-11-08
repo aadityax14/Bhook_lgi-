@@ -4,9 +4,9 @@ import { store } from '../db/store.js';
 const router = express.Router();
 
 // GET /api/categories
-router.get('/categories', (req, res) => {
+router.get('/categories', async (req, res) => {
   try {
-    const categories = store.getCategories();
+    const categories = await store.getCategories();
 
     res.json({
       success: true,
@@ -22,11 +22,11 @@ router.get('/categories', (req, res) => {
 
 
 // GET /api/products
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { category, search } = req.query;
 
-    const products = store.getProducts(category, search);
+    const products = await store.getProducts(category, search);
 
     res.json({
       success: true,
@@ -43,9 +43,9 @@ router.get('/', (req, res) => {
 
 
 // GET /api/products/:id
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const product = store.getProductById(req.params.id);
+    const product = await store.getProductById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -68,7 +68,7 @@ router.get('/:id', (req, res) => {
 
 
 // POST /api/products
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const {
       name,
@@ -99,7 +99,7 @@ router.post('/', (req, res) => {
       });
     }
 
-    const newProduct = store.createProduct({
+    const newProduct = await store.createProduct({
       name: name.trim(),
 
       price: numericPrice,
@@ -151,9 +151,9 @@ router.post('/', (req, res) => {
 
 
 // PATCH /api/products/:id
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
-    const product = store.getProductById(req.params.id);
+    const product = await store.getProductById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -242,7 +242,7 @@ router.patch('/:id', (req, res) => {
       updates.imageUrl = updates.imageUrl.trim();
     }
 
-    const updated = store.updateProduct(
+    const updated = await store.updateProduct(
       req.params.id,
       updates
     );
@@ -271,9 +271,9 @@ router.patch('/:id', (req, res) => {
 
 
 // DELETE /api/products/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const success = store.deleteProduct(req.params.id);
+    const success = await store.deleteProduct(req.params.id);
 
     if (!success) {
       return res.status(404).json({

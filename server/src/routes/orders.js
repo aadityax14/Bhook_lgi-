@@ -4,9 +4,9 @@ import { store } from '../db/store.js';
 const router = express.Router();
 
 // GET /api/orders (Admin / all)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const orders = store.getOrders();
+    const orders = await store.getOrders();
 
     res.json({
       success: true,
@@ -22,11 +22,11 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/orders/user/:phone
-router.get('/user/:phone', (req, res) => {
+router.get('/user/:phone', async (req, res) => {
   try {
-    const orders = store
-      .getOrders()
-      .filter(o => o.customerPhone === req.params.phone);
+    const orders = await store.getOrders({
+      customerPhone: req.params.phone
+    });
 
     res.json({
       success: true,
@@ -42,9 +42,9 @@ router.get('/user/:phone', (req, res) => {
 });
 
 // GET /api/orders/:id
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const order = store.getOrderById(req.params.id);
+    const order = await store.getOrderById(req.params.id);
 
     if (!order) {
       return res.status(404).json({
@@ -67,7 +67,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/orders
 // Place new order
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const {
       customerName,
@@ -105,7 +105,7 @@ router.post('/', (req, res) => {
     // REAL SERVER-SIDE STOCK CHECK
     // ============================================
 
-    const stockCheck = store.checkOrderStock(items);
+    const stockCheck = await store.checkOrderStock(items);
 
     if (!stockCheck.ok) {
       return res.status(409).json({
@@ -118,7 +118,7 @@ router.post('/', (req, res) => {
     // CREATE ORDER
     // ============================================
 
-    const createdOrder = store.createOrder({
+    const createdOrder = await store.createOrder({
       customerName,
       customerPhone,
       hostel,
@@ -141,7 +141,8 @@ router.post('/', (req, res) => {
   } catch (err) {
     console.error('CREATE ORDER ERROR:', err);
 
-    res.status(500).json({
+    // Stock ran out between the check above and the insert
+    res.status(err.status || 500).json({
       success: false,
       error: err.message
     });
@@ -150,7 +151,7 @@ router.post('/', (req, res) => {
 
 // PATCH /api/orders/:id/status
 // Admin changes order status
-router.patch('/:id/status', (req, res) => {
+router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
 
@@ -179,7 +180,7 @@ router.patch('/:id/status', (req, res) => {
     // UPDATE ORDER
     // ============================================
 
-    const updated = store.updateOrderStatus(
+    const updated = await store.updateOrderStatus(
       req.params.id,
       status
     );
@@ -202,6 +203,7 @@ router.patch('/:id/status', (req, res) => {
 
     // Stock-related error
     if (
+      err.status === 409 ||
       err.message &&
       (
         err.message.toLowerCase().includes('stock') ||
