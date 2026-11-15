@@ -1,0 +1,6 @@
+# Photos uploaded by customers / admin (custom orders, reviews, banners)
+uploads/
+
+# Automatic data backups made on every server start
+src/data/backups/
+src/data/db.json.tmp

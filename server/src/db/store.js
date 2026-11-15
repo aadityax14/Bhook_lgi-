@@ -355,13 +355,32 @@ const INITIAL_NOTIFICATIONS = [
   }
 ];
 
+// Delivery & packing charges (the admin can change these).
+// Delivery is cheaper when a chef on duty today lives in the
+// customer's hostel. freeDeliveryFrom: subtotal at which delivery
+// becomes free (0 = never free — delivery partners always earn).
+const DEFAULT_SETTINGS = {
+  sameHostelDeliveryFee: 5,
+  otherHostelDeliveryFee: 10,
+  packagingFee: 5,
+  freeDeliveryFrom: 0,
+  // Bhook_Lgi food kitchen open for orders? (Zuxu is never affected.)
+  kitchenOpen: true
+};
+
 class DataStore {
   constructor() {
     this.data = {
+      sellers: INITIAL_SELLERS,
       categories: INITIAL_CATEGORIES,
       products: INITIAL_PRODUCTS,
       orders: INITIAL_ORDERS,
-      notifications: INITIAL_NOTIFICATIONS
+      notifications: INITIAL_NOTIFICATIONS,
+      customRequests: [],
+      reviews: [],
+      banners: null,
+      settings: { ...DEFAULT_SETTINGS },
+      earningsArchive: {}
     };
 
     this.init();
@@ -372,37 +391,99 @@ class DataStore {
   // =========================================================
 
   init() {
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        const fileContent = fs.readFileSync(DATA_FILE, 'utf-8');
-
-        this.data = JSON.parse(fileContent);
-
-        this.migrateInventory();
-
-        this.persist();
-      } else {
-        this.persist();
-      }
-    } catch (err) {
-      console.warn(
-        'Could not read persistent file store, using initial defaults:',
-        err.message
-      );
-
-      this.data = {
-        categories: INITIAL_CATEGORIES,
-        products: INITIAL_PRODUCTS,
-        orders: INITIAL_ORDERS,
-        notifications: INITIAL_NOTIFICATIONS
-      };
-
+    // First run only: no data file yet → start from the defaults.
+    if (!fs.existsSync(DATA_FILE)) {
       this.migrateInventory();
       this.persist();
+      return;
+    }
+
+    // Keep a copy of the data from every start-up (last 10).
+    this.backupDataFile('startup');
+
+    try {
+      {
+        const fileContent = fs.readFileSync(DATA_FILE, 'utf-8');
+
+       const savedData = JSON.parse(fileContent);
+
+this.data = {
+  sellers: Array.isArray(savedData.sellers)
+    ? savedData.sellers
+    : INITIAL_SELLERS,
+
+  categories: [
+    ...(Array.isArray(savedData.categories) ? savedData.categories : []),
+    ...INITIAL_CATEGORIES.filter(
+        defaultCategory =>
+            !(savedData.categories || []).some(
+                savedCategory => savedCategory.id === defaultCategory.id
+            )
+    )
+],
+
+  products: Array.isArray(savedData.products)
+    ? savedData.products
+    : INITIAL_PRODUCTS,
+
+  orders: Array.isArray(savedData.orders)
+    ? savedData.orders
+    : INITIAL_ORDERS,
+
+  notifications: Array.isArray(savedData.notifications)
+    ? savedData.notifications
+    : INITIAL_NOTIFICATIONS,
+
+  // Zuxu custom-order requests (photo + description → admin quote)
+  // Delivery earnings kept from orders the admin deleted
+  // { staffId: { 'YYYY-MM-DD': { deliveries, amount } } }
+  earningsArchive:
+    savedData.earningsArchive && typeof savedData.earningsArchive === 'object'
+      ? savedData.earningsArchive
+      : {},
+
+  customRequests: Array.isArray(savedData.customRequests)
+    ? savedData.customRequests
+    : [],
+
+  // Zuxu product reviews from customers who received the product
+  reviews: Array.isArray(savedData.reviews)
+    ? savedData.reviews
+    : [],
+
+  // Homepage hero banners set by the admin (null = app defaults)
+  banners: Array.isArray(savedData.banners)
+    ? savedData.banners
+    : null,
+
+  // Delivery & packing charges set by the admin
+  settings: {
+    ...DEFAULT_SETTINGS,
+    ...(savedData.settings && typeof savedData.settings === 'object'
+      ? savedData.settings
+      : {})
+  }
+};
+
+this.migrateInventory();
+this.persist();
+      }
+    } catch (err) {
+      // NEVER replace real data with defaults. Keep the file untouched,
+      // save a copy for inspection, and stop the server loudly.
+      const copy = this.backupDataFile('unreadable');
+
+      console.error('\n❌ Could not load server/src/data/db.json:', err.message);
+      console.error('   Your data was NOT changed.' + (copy ? ` A copy was saved to ${copy}` : ''));
+      console.error('   Fix the problem (or restore a file from server/src/data/backups/) and restart.\n');
+
+      throw err;
     }
   }
 
   migrateInventory() {
+
+
     if (!Array.isArray(this.data.products)) {
       this.data.products = [];
     }
@@ -410,6 +491,24 @@ class DataStore {
     if (!Array.isArray(this.data.orders)) {
       this.data.orders = [];
     }
+
+    // Older orders don't record whether they were food or Zuxu.
+    this.data.orders.forEach(order => {
+      if (order.orderType) return;
+
+      const isZuxu =
+        Array.isArray(order.items) &&
+        order.items.length > 0 &&
+        order.items.every(item => {
+          const product = this.data.products.find(p => p.id === item.productId);
+          return (
+            product?.storeId === 'store-zuxu' ||
+            String(product?.categoryId || '').toLowerCase() === 'zuxu'
+          );
+        });
+
+      order.orderType = isZuxu ? 'zuxu' : 'food';
+    });
 
     if (!Array.isArray(this.data.notifications)) {
       this.data.notifications = [];
@@ -420,8 +519,13 @@ class DataStore {
     // ---------------------------------------------------------
 
     this.data.products.forEach(product => {
-      const isBhel = this.isBhelProduct(product.id);
 
+      // Publishing status is separate from stock availability.
+if (product.isActive === undefined) {
+  product.isActive = true;
+}
+      const isBhel = this.isBhelProduct(product.id);
+      
       if (isBhel) {
         product.stockType = 'bhel';
 
@@ -492,13 +596,43 @@ class DataStore {
     // ---------------------------------------------------------
     // Migrate old orders
     // ---------------------------------------------------------
-
+    
     this.data.orders.forEach(order => {
       if (order.stockDeducted === undefined) {
         order.stockDeducted =
           order.status !== 'placed';
       }
     });
+  }
+
+  // Copy db.json into server/src/data/backups/ (keeps the newest 10).
+  // Returns the backup path, or null if it couldn't be made.
+  backupDataFile(reason) {
+    try {
+      if (!fs.existsSync(DATA_FILE)) return null;
+
+      const backupDir = path.join(path.dirname(DATA_FILE), 'backups');
+      fs.mkdirSync(backupDir, { recursive: true });
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const target = path.join(backupDir, `db-${stamp}-${reason}.json`);
+      fs.copyFileSync(DATA_FILE, target);
+
+      const old = fs.readdirSync(backupDir)
+        .filter(name => name.startsWith('db-') && name.endsWith('.json'))
+        .sort()
+        .reverse()
+        .slice(10);
+
+      for (const name of old) {
+        fs.unlinkSync(path.join(backupDir, name));
+      }
+
+      return target;
+    } catch (error) {
+      console.warn('Could not back up db.json:', error.message);
+      return null;
+    }
   }
 
   persist() {
@@ -509,11 +643,17 @@ class DataStore {
         fs.mkdirSync(dir, { recursive: true });
       }
 
+      // Write to a temp file, then swap it in, so a crash or restart
+      // mid-save can never leave a half-written db.json behind.
+      const tempFile = `${DATA_FILE}.tmp`;
+
       fs.writeFileSync(
-        DATA_FILE,
+        tempFile,
         JSON.stringify(this.data, null, 2),
         'utf-8'
       );
+
+      fs.renameSync(tempFile, DATA_FILE);
     } catch (err) {
       console.error(
         'Error persisting data store:',
@@ -573,60 +713,130 @@ class DataStore {
     );
   }
 
-  createProduct(productData) {
-    const stockType =
-      productData.stockType ||
-      (
-        productData.categoryId === 'bhel'
-          ? 'bhel'
-          : 'normal'
-      );
+ createProduct(productData) {
+  const stockType =
+    productData.stockType ||
+    (productData.categoryId === 'bhel' ? 'bhel' : 'normal');
 
-    const newProduct = {
-      id: `prod-${Date.now()}`,
-      variants: [],
-      addons: [],
-      tags: [],
-      isAvailable: true,
-      isCooked: false,
-      allowsSpiceCustomization: false,
-      imageUrl:
-        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      stockType,
-      ...productData
-    };
+  const now = new Date().toISOString();
 
-    if (stockType === 'bhel') {
-      newProduct.stockHalfUnits = Math.max(
-        0,
-        Number(newProduct.stockHalfUnits) || 0
-      );
+  const initialStock =
+    productData.stockQuantity !== undefined
+      ? Math.max(0, Number(productData.stockQuantity) || 0)
+      : 10;
 
-      newProduct.isAvailable =
-        newProduct.stockHalfUnits > 0;
-    } else {
-      newProduct.stockQuantity = Math.max(
-        0,
-        Number(newProduct.stockQuantity) || 0
-      );
+  const initialBhelStock =
+    productData.stockHalfUnits !== undefined
+      ? Math.max(0, Number(productData.stockHalfUnits) || 0)
+      : 0;
 
-      newProduct.isAvailable =
-        newProduct.stockQuantity > 0;
-    }
+  const newProduct = {
+    id: `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 
-    this.data.products.unshift(newProduct);
+    // General product details
+    name: '',
+    description: '',
+    categoryId: 'snacks',
+    price: 0,
+    mrp: undefined,
+    sku: '',
+    brand: '',
 
-    if (this.isBhelProduct(newProduct.id)) {
-      this.syncBhelStock();
-    }
+    // Store identification
+    storeId:
+      productData.storeId ||
+      (productData.productType === 'zuxu'
+        ? 'store-zuxu'
+        : 'store-bhook-lgi'),
 
-    this.persist();
+    productType:
+      productData.productType ||
+      (productData.storeId === 'store-zuxu' ? 'zuxu' : 'food'),
 
-    return newProduct;
+    // Images
+    imageUrl: '',
+    images: [],
+
+    // Product options
+    variants: [],
+    addons: [],
+    customization: {},
+    customizationOptions: [],
+
+    // Additional details
+    specifications: {},
+    deliveryInfo: {},
+    tags: [],
+
+    // Publishing
+    isActive:
+      productData.isActive !== undefined
+        ? Boolean(productData.isActive)
+        : true,
+
+    isFeatured: Boolean(productData.isFeatured),
+
+    // Food-specific settings
+    isCooked: false,
+    allowsSpiceCustomization: false,
+
+    // Inventory
+    stockType,
+
+    stockQuantity: initialStock,
+    stockHalfUnits: initialBhelStock,
+
+    isAvailable: true,
+
+    createdAt: now,
+    updatedAt: now,
+
+    // Preserve all additional supported product data.
+    ...productData,
+
+    // Ensure the final inventory values are normalized.
+    stockType,
+    stockQuantity: initialStock,
+    stockHalfUnits: initialBhelStock,
+
+    isActive:
+      productData.isActive !== undefined
+        ? Boolean(productData.isActive)
+        : true,
+
+    isFeatured: Boolean(productData.isFeatured),
+
+    createdAt: now,
+    updatedAt: now
+  };
+
+  if (stockType === 'bhel') {
+    newProduct.isAvailable =
+      initialBhelStock > 0;
+  } else {
+    newProduct.isAvailable =
+      initialStock > 0;
   }
 
+  // Keep the primary image synchronized.
+  if (
+    (!newProduct.imageUrl || !newProduct.imageUrl.trim()) &&
+    Array.isArray(newProduct.images) &&
+    newProduct.images.length > 0
+  ) {
+    newProduct.imageUrl = newProduct.images[0];
+  }
+
+  this.data.products.unshift(newProduct);
+
+  if (this.isBhelProduct(newProduct.id)) {
+    this.syncBhelStock();
+  }
+
+  this.persist();
+
+  return newProduct;
+}
   updateProduct(id, updates) {
     const idx =
       this.data.products.findIndex(
@@ -649,22 +859,19 @@ class DataStore {
     // ---------------------------------------------------------
 
     if (
-      cleanedUpdates.stockQuantity !== undefined &&
-      !this.isBhelProduct(id)
-    ) {
-      cleanedUpdates.stockQuantity =
-        Math.max(
-          0,
-          Number(
-            cleanedUpdates.stockQuantity
-          ) || 0
-        );
+  cleanedUpdates.stockQuantity !== undefined &&
+  !this.isBhelProduct(id)
+) {
+  cleanedUpdates.stockQuantity =
+    Math.max(0, Number(cleanedUpdates.stockQuantity) || 0);
 
-      cleanedUpdates.stockType = 'normal';
+  cleanedUpdates.stockType = 'normal';
 
-      cleanedUpdates.isAvailable =
-        cleanedUpdates.stockQuantity > 0;
-    }
+  if (cleanedUpdates.isAvailable === undefined) {
+    cleanedUpdates.isAvailable =
+      cleanedUpdates.stockQuantity > 0;
+  }
+}
 
     // ---------------------------------------------------------
     // BHEL SHARED STOCK
@@ -1146,18 +1353,25 @@ class DataStore {
   }
 
   createOrder(orderPayload) {
+    const isCustom = Boolean(orderPayload.isCustom);
+
     // IMPORTANT:
     // Check stock BEFORE creating the order.
-    const stockCheck =
-      this.checkOrderStock(
-        orderPayload.items || []
-      );
+    // (Custom Zuxu orders are made to order — no stock.)
+    const stockCheck = isCustom
+      ? { ok: true }
+      : this.checkOrderStock(
+          orderPayload.items || []
+        );
 
     if (!stockCheck.ok) {
       throw new Error(
         stockCheck.error
       );
     }
+
+    const orderType =
+      orderPayload.orderType === 'zuxu' ? 'zuxu' : 'food';
 
     const randNum =
       Math.floor(
@@ -1174,6 +1388,18 @@ class DataStore {
     const newOrder = {
       id,
       orderNumber,
+
+      // Owner of the order (signed-in customer)
+      userId:
+        orderPayload.userId ||
+        null,
+
+      // 'food' (Bhook_Lgi kitchen) or 'zuxu' (handmade store).
+      // They follow different tracking steps.
+      orderType,
+      isCustom,
+      customRequestId: orderPayload.customRequestId || null,
+      estimatedDeliveryDate: orderPayload.estimatedDeliveryDate || null,
 
       customerName:
         orderPayload.customerName ||
@@ -1213,19 +1439,21 @@ class DataStore {
         ) || 0,
 
       packagingFee:
-        Number(
-          orderPayload.packagingFee
-        ) || 5,
+        orderPayload.packagingFee !== undefined
+          ? Number(orderPayload.packagingFee) || 0
+          : 5,
 
       total:
         Number(
           orderPayload.total
         ) || 0,
 
-      status: 'placed',
+      // A custom order is created only after the admin quoted it
+      // and the customer agreed, so it starts as accepted.
+      status: isCustom ? 'accepted' : 'placed',
 
-      // Stock will be deducted when accepted.
-      stockDeducted: false,
+      // Stock will be deducted when accepted (never for custom orders).
+      stockDeducted: isCustom,
 
       etaMinutes: 15,
 
@@ -1242,12 +1470,17 @@ class DataStore {
 
     this.createNotification({
       orderId: newOrder.id,
+      userId: newOrder.userId,
 
       title:
-        'Order Placed! 🎉',
+        isCustom
+          ? '✨ Custom Zuxu order confirmed!'
+          : 'Order Placed! 🎉',
 
       message:
-        `Your Bhook_Lgi order ${newOrder.orderNumber} is on its way to the kitchen.`,
+        orderType === 'zuxu'
+          ? `Your Zuxu order ${newOrder.orderNumber} has been placed. We'll keep you posted!`
+          : `Your Bhook_Lgi order ${newOrder.orderNumber} is on its way to the kitchen.`,
 
       type: 'order_status'
     });
@@ -1353,22 +1586,35 @@ class DataStore {
       }
     };
 
-    if (
-      statusNotifications[status]
-    ) {
+    // Zuxu (handmade) orders have their own steps and wording.
+    const zuxuNotifications = {
+      accepted: {
+        title: '🎀 Zuxu Order Accepted!',
+        message: `Your Zuxu order ${order.orderNumber} has been accepted and is being made with love.`
+      },
+      ready_to_dispatch: {
+        title: '📦 Ready to Dispatch!',
+        message: `Your Zuxu order ${order.orderNumber} is packed and ready to be sent out.`
+      },
+      out_for_delivery: statusNotifications.out_for_delivery,
+      delivered: {
+        title: '🎁 Zuxu Order Delivered!',
+        message: 'Hope you love it! You can now rate it and share a photo.'
+      },
+      cancelled: statusNotifications.cancelled
+    };
+
+    const notification =
+      order.orderType === 'zuxu'
+        ? zuxuNotifications[status]
+        : statusNotifications[status];
+
+    if (notification) {
       this.createNotification({
         orderId: order.id,
-
-        title:
-          statusNotifications[
-            status
-          ].title,
-
-        message:
-          statusNotifications[
-            status
-          ].message,
-
+        userId: order.userId || null,
+        title: notification.title,
+        message: notification.message,
         type: 'order_status'
       });
     }
@@ -1376,6 +1622,257 @@ class DataStore {
     this.persist();
 
     return order;
+  }
+
+  // =========================================================
+  // ZUXU CUSTOM ORDER REQUESTS
+  // pending → quoted (admin sets price + date) → ordered
+  //                                            ↘ declined (customer)
+  // pending → rejected (admin)
+  // =========================================================
+
+  getCustomRequests() {
+    return [...this.data.customRequests].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+  }
+
+  getCustomRequestsForUser(userId) {
+    return this.getCustomRequests().filter(
+      (r) => String(r.userId) === String(userId)
+    );
+  }
+
+  getCustomRequestById(id) {
+    return this.data.customRequests.find((r) => r.id === id) || null;
+  }
+
+  createCustomRequest(data) {
+    const now = new Date().toISOString();
+    const request = {
+      id: `zx-req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      requestNumber: `#ZX-C-${Math.floor(1000 + Math.random() * 9000)}`,
+      status: 'pending',
+      quotedPrice: null,
+      estimatedDeliveryDate: null,
+      adminNote: '',
+      orderId: null,
+      createdAt: now,
+      updatedAt: now,
+      ...data
+    };
+
+    this.data.customRequests.unshift(request);
+    this.persist();
+    return request;
+  }
+
+  updateCustomRequest(id, updates, notification) {
+    const request = this.getCustomRequestById(id);
+    if (!request) return null;
+
+    Object.assign(request, updates, { updatedAt: new Date().toISOString() });
+
+    if (notification && request.userId) {
+      this.createNotification({
+        userId: request.userId,
+        type: 'custom_request',
+        ...notification
+      });
+    }
+
+    this.persist();
+    return request;
+  }
+
+  // =========================================================
+  // ZUXU REVIEWS
+  // =========================================================
+
+  getReviewsForProduct(productId) {
+    return this.data.reviews
+      .filter((r) => r.productId === productId)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  getReviewsByUser(userId) {
+    return this.data.reviews.filter((r) => String(r.userId) === String(userId));
+  }
+
+  findReview(userId, orderId, productId) {
+    return (
+      this.data.reviews.find(
+        (r) =>
+          String(r.userId) === String(userId) &&
+          r.orderId === orderId &&
+          r.productId === productId
+      ) || null
+    );
+  }
+
+  // { productId: { average, count } }
+  getReviewSummary() {
+    const summary = {};
+
+    for (const review of this.data.reviews) {
+      const entry = (summary[review.productId] ||= { total: 0, count: 0 });
+      entry.total += Number(review.rating) || 0;
+      entry.count += 1;
+    }
+
+    for (const [productId, entry] of Object.entries(summary)) {
+      summary[productId] = {
+        average: Math.round((entry.total / entry.count) * 10) / 10,
+        count: entry.count
+      };
+    }
+
+    return summary;
+  }
+
+  createReview(data) {
+    const review = {
+      id: `zx-rev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      ...data
+    };
+
+    this.data.reviews.unshift(review);
+    this.persist();
+    return review;
+  }
+
+  deleteReview(id) {
+    const index = this.data.reviews.findIndex((r) => r.id === id);
+    if (index === -1) return null;
+
+    const [removed] = this.data.reviews.splice(index, 1);
+    this.persist();
+    return removed;
+  }
+
+  // =========================================================
+  // DELIVERY & PACKING CHARGES
+  // =========================================================
+
+  getSettings() {
+    const saved = this.data.settings || {};
+    // Only known keys (older files may contain other fields).
+    return Object.fromEntries(
+      Object.keys(DEFAULT_SETTINGS).map(key => {
+        const fallback = DEFAULT_SETTINGS[key];
+        if (saved[key] === undefined) return [key, fallback];
+        // Keep each setting's type (numbers vs. on/off switches).
+        return [key, typeof fallback === 'boolean' ? saved[key] === true : Number(saved[key])];
+      })
+    );
+  }
+
+  updateSettings(updates) {
+    this.data.settings = { ...this.getSettings(), ...updates };
+    this.persist();
+    return this.getSettings();
+  }
+
+  // Set extra fields on an order (delivery partner, timestamps…).
+  updateOrderFields(orderId, fields) {
+    const order = this.getOrderById(orderId);
+    if (!order) return null;
+    Object.assign(order, fields);
+    this.persist();
+    return order;
+  }
+
+  // Delivery partner earnings = delivery charge of every order
+  // they personally delivered.
+  // Earnings from deleted orders: { 'YYYY-MM-DD': { deliveries, amount } }
+  getArchivedEarnings(staffId) {
+    return (this.data.earningsArchive || {})[String(staffId)] || {};
+  }
+
+  // =========================================================
+  // DELETE ORDERS (admin)
+  // ids: list of order ids. Their notifications go too; the delivery
+  // partner's earnings from them are kept in earningsArchive.
+  // A backup of db.json is saved first.
+  // =========================================================
+
+  deleteOrders(ids) {
+    const wanted = new Set(ids.map(String));
+    const toDelete = this.data.orders.filter(o => wanted.has(String(o.id)));
+
+    if (toDelete.length === 0) return [];
+
+    this.backupDataFile('before-delete-orders');
+
+    this.data.earningsArchive ||= {};
+
+    for (const order of toDelete) {
+      if (order.status === 'delivered' && order.deliveredBy) {
+        const date = order.deliveredAt
+          ? new Date(new Date(order.deliveredAt).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
+          : 'unknown';
+        const staff = (this.data.earningsArchive[String(order.deliveredBy)] ||= {});
+        const day = (staff[date] ||= { deliveries: 0, amount: 0 });
+        day.deliveries += 1;
+        day.amount = Math.round((day.amount + (Number(order.deliveryFee) || 0)) * 100) / 100;
+      }
+    }
+
+    const deletedIds = new Set(toDelete.map(o => String(o.id)));
+    this.data.orders = this.data.orders.filter(o => !deletedIds.has(String(o.id)));
+    this.data.notifications = this.data.notifications.filter(
+      n => !n.orderId || !deletedIds.has(String(n.orderId))
+    );
+
+    this.persist();
+    return toDelete.map(o => o.id);
+  }
+
+  getDeliveryEarnings(staffId) {
+    return this.data.orders
+      .filter(o => o.status === 'delivered' && String(o.deliveredBy || '') === String(staffId))
+      .sort((a, b) => new Date(b.deliveredAt || b.updatedAt) - new Date(a.deliveredAt || a.updatedAt));
+  }
+
+  // =========================================================
+  // HOMEPAGE BANNERS (null = use the app's default slides)
+  // =========================================================
+
+  getBanners() {
+    return this.data.banners;
+  }
+
+  setBanners(slides) {
+    this.data.banners = slides;
+    this.persist();
+    return this.data.banners;
+  }
+
+  // Update name / phone on a customer's orders that are still
+  // in progress (so staff call the current number).
+  updateActiveOrderContact(userId, { customerName, customerPhone }) {
+    const finished = ['delivered', 'cancelled'];
+    let changed = 0;
+
+    for (const order of this.data.orders) {
+      if (
+        order.userId &&
+        String(order.userId) === String(userId) &&
+        !finished.includes(order.status)
+      ) {
+        if (customerName) order.customerName = customerName;
+        if (customerPhone) order.customerPhone = customerPhone;
+        order.updatedAt = new Date().toISOString();
+        changed++;
+      }
+    }
+
+    if (changed > 0) {
+      this.persist();
+    }
+
+    return changed;
   }
 
   // =========================================================
@@ -1418,13 +1915,23 @@ class DataStore {
     return notif;
   }
 
+  // Notifications belonging to one signed-in customer
+  getNotificationsForUser(userId) {
+    return this.getNotifications().filter(
+      n => n.userId && String(n.userId) === String(userId)
+    );
+  }
+
   markNotificationAsRead(
-    id
+    id,
+    userId
   ) {
     const notif =
       this.data.notifications.find(
         notification =>
-          notification.id === id
+          notification.id === id &&
+          (userId === undefined ||
+            String(notification.userId) === String(userId))
       );
 
     if (notif) {
@@ -1436,10 +1943,15 @@ class DataStore {
     return notif;
   }
 
-  markAllNotificationsAsRead() {
+  markAllNotificationsAsRead(userId) {
     this.data.notifications.forEach(
       notification => {
-        notification.isRead = true;
+        if (
+          userId === undefined ||
+          String(notification.userId) === String(userId)
+        ) {
+          notification.isRead = true;
+        }
       }
     );
 
@@ -1447,6 +1959,16 @@ class DataStore {
 
     return true;
   }
+
+  getSellers() {
+  return this.data.sellers || [];
+}
+
+getSellerByStoreId(storeId) {
+  return this.getSellers().find(
+    seller => seller.storeId === storeId
+  ) || null;
+}
 
   // =========================================================
   // CATEGORIES

@@ -10,8 +10,11 @@ import {
 import { useCart } from '../../context/CartContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
+import { useOrder } from '../../context/OrderContext';
+import { visibleUnreadCount } from '../../utils/notifications';
 
 import LoginModal from './LoginModal';
+import { api } from '../../services/api';
 import MyOrdersModal from '../orders/MyOrdersModal';
 
 export default function Header({
@@ -19,10 +22,18 @@ export default function Header({
   onOpenNotifications,
   onLogoClick,
   onWorkWithBhookLgi,
-  onOpenMyOrders
+  onOpenMyOrders,
+  onOpenProfile
 }) {
-  const { itemsCount } = useCart();
-  const { unreadCount } = useNotification();
+  const { itemsCount, feeSettings } = useCart();
+  // Set by the admin in Inventory → Kitchen status
+  const kitchenOpen = feeSettings?.kitchenOpen !== false;
+  const { notifications } = useNotification();
+  const { myOrders } = useOrder();
+
+  // Only unseen notifications that are actually shown in the list
+  // (delivered-order updates are hidden there, so not counted here).
+  const unreadCount = visibleUnreadCount(notifications, myOrders);
 
   // Authentication comes from AuthContext.
   const {
@@ -30,7 +41,10 @@ export default function Header({
     updateUser,
     isAuthenticated,
     authLoading,
-    logout
+    logout,
+    isAdmin,
+    isStaff,
+    setIsAdminView
   } = useAuth();
 
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -42,7 +56,7 @@ export default function Header({
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all">
 
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
 
@@ -135,13 +149,37 @@ export default function Header({
                 {showProfile && (
                   <div className="absolute right-0 top-12 w-52 rounded-2xl bg-white p-2 shadow-xl border border-gray-100 z-50">
 
-                    {/* My Profile */}
-                    <button
-                      onClick={() => setShowProfile(false)}
-                      className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
-                    >
-                      👤 My Profile
-                    </button>
+                    {/* Admin only (role confirmed by the server) */}
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setShowProfile(false);
+                          setIsAdminView(true);
+                        }}
+                        className="w-full rounded-xl px-4 py-3 text-left font-black hover:bg-brand-yellow/20"
+                      >
+                        🛠️ Admin Dashboard
+                      </button>
+                    )}
+
+                    {/* My Profile (customer & admin accounts) */}
+                    {!isStaff && (
+                      <button
+                        onClick={() => {
+                          setShowProfile(false);
+                          if (onOpenProfile) onOpenProfile();
+                        }}
+                        className="w-full rounded-xl px-4 py-3 text-left font-semibold hover:bg-gray-100"
+                      >
+                        👤 My Profile
+                      </button>
+                    )}
+
+                    {isStaff && (
+                      <div className="px-4 py-2 text-xs text-gray-500">
+                        <span className="font-mono font-bold text-brand-black">{user?.loginId}</span> · off duty
+                      </div>
+                    )}
 
                     {/* My Orders */}
                     <button
@@ -223,9 +261,15 @@ export default function Header({
             <ChevronDown className="w-3 h-3 text-gray-400" />
           </button>
 
-          <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
-            🟢 Kitchen Open
-          </span>
+          {kitchenOpen ? (
+            <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+              🟢 Kitchen Open
+            </span>
+          ) : (
+            <span className="text-[11px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full">
+              🔴 Kitchen Closed
+            </span>
+          )}
         </div>
       </header>
 
@@ -288,7 +332,22 @@ export default function Header({
 
               <button
                 type="button"
-                onClick={() => setShowLocationModal(false)}
+                onClick={async () => {
+                  setShowLocationModal(false);
+
+                  // Signed-in customers: remember it on their profile.
+                  if (isAuthenticated && !isAdmin && !isStaff && user?.hostel && user?.roomNumber?.trim()) {
+                    try {
+                      const res = await api.updateProfile({
+                        hostel: user.hostel,
+                        roomNumber: user.roomNumber,
+                      });
+                      if (res?.user) updateUser(res.user);
+                    } catch (err) {
+                      console.warn('Could not save delivery address:', err.message);
+                    }
+                  }
+                }}
                 className="w-full py-2.5 bg-brand-black text-brand-yellow font-bold text-sm rounded-xl hover:bg-gray-800 transition-colors shadow-sm"
               >
                 Done

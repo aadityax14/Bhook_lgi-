@@ -1,7 +1,48 @@
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Check, Clock, Phone, MapPin, ArrowLeft } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Clock, Phone, MapPin, ArrowLeft, Star } from 'lucide-react';
 import { useOrder } from '../../context/OrderContext';
+import { api } from '../../services/api';
+import ReviewModal from '../zuxu/ReviewModal';
+import { PhotoStrip, formatDate } from '../zuxu/ZuxuShared';
+
+// Zuxu handmade orders follow their own steps.
+const ZUXU_STAGES = [
+  {
+    key: 'placed',
+    title: 'Order Placed',
+    desc: 'Sent to Zuxu',
+    icon: '📝'
+  },
+  {
+    key: 'accepted',
+    title: 'Accepted',
+    desc: 'Zuxu is making your order with love',
+    icon: '🎀'
+  },
+  {
+    key: 'ready_to_dispatch',
+    title: 'Ready to Dispatch',
+    desc: 'Packed and ready to be sent out',
+    icon: '📦'
+  },
+  {
+    key: 'out_for_delivery',
+    title: 'Out for Delivery',
+    desc: 'On the way to you',
+    icon: '🛵'
+  },
+  {
+    key: 'delivered',
+    title: 'Delivered',
+    desc: 'Hope you love it!',
+    icon: '🎁'
+  }
+];
+
+// Extras are saved as { name, price } (older orders: plain names).
+const addonNames = (addons) =>
+  (addons || []).map((a) => (typeof a === 'string' ? a : a?.name)).filter(Boolean);
 
 const STAGES = [
   {
@@ -89,6 +130,27 @@ export default function OrderTrackingView({
     return () => clearInterval(interval);
   }, [fetchOrders]);
 
+  // Zuxu reviews (after delivery)
+  const [reviewed, setReviewed] = useState(new Set());
+  const [reviewItem, setReviewItem] = useState(null);
+
+  const isZuxuOrder = activeOrder?.orderType === 'zuxu';
+  // Any delivered order (food or Zuxu) can be rated & reviewed.
+  const canReview = activeOrder?.status === 'delivered';
+
+  const loadMyReviews = useCallback(async () => {
+    try {
+      const res = await api.getMyReviews();
+      setReviewed(new Set((res.data || []).map((r) => `${r.orderId}:${r.productId}`)));
+    } catch {
+      // Reviews are optional
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canReview) loadMyReviews();
+  }, [canReview, loadMyReviews]);
+
   if (!activeOrder) {
     return (
       <div className="text-center py-16 px-4">
@@ -116,11 +178,13 @@ export default function OrderTrackingView({
     );
   }
 
-  const currentStageIndex = STAGES.findIndex(
+  const stages = isZuxuOrder ? ZUXU_STAGES : STAGES;
+
+  const currentStageIndex = stages.findIndex(
     stage => stage.key === activeOrder.status
   );
 
-  const activeStage = STAGES[currentStageIndex] || STAGES[0];
+  const activeStage = stages[currentStageIndex] || stages[0];
 
   const isDelivered = activeOrder.status === 'delivered';
   const isCancelled = activeOrder.status === 'cancelled';
@@ -248,7 +312,9 @@ export default function OrderTrackingView({
                   {isCancelled
                     ? 'This order was cancelled by the kitchen or customer.'
                     : isDelivered
-                    ? 'Your Bhook_Lgi food has been delivered! Enjoy your meal.'
+                    ? isZuxuOrder
+                      ? 'Your Zuxu order has been delivered! Rate it below 💛'
+                      : 'Your Bhook_Lgi food has been delivered! Enjoy — and rate it below 😋'
                     : activeStage.desc}
 
                 </p>
@@ -284,12 +350,16 @@ export default function OrderTrackingView({
                     <div>
 
                       <div className="text-[10px] text-gray-400 font-bold uppercase">
-                        Est. Arrival
+                        {isZuxuOrder ? 'Est. Delivery' : 'Est. Arrival'}
                       </div>
 
                       <div className="font-extrabold text-white">
                         {isDelivered
                           ? 'Delivered 🎉'
+                          : isZuxuOrder
+                          ? activeOrder.estimatedDeliveryDate
+                            ? `By ${formatDate(activeOrder.estimatedDeliveryDate)}`
+                            : 'In a few days'
                           : `~${activeOrder.etaMinutes || 15} mins`}
                       </div>
 
@@ -339,7 +409,7 @@ export default function OrderTrackingView({
 
           <div className="absolute left-[23px] top-3 bottom-3 w-0.5 bg-gray-200" />
 
-          {STAGES.map((stage, idx) => {
+          {stages.map((stage, idx) => {
 
             const isCompleted = currentStageIndex > idx;
             const isCurrent = currentStageIndex === idx;
@@ -433,48 +503,76 @@ export default function OrderTrackingView({
 
         <div className="divide-y divide-gray-100 space-y-2">
 
-          {activeOrder.items?.map((item, i) => (
+          {activeOrder.items?.map((item, i) => {
+            const extras = addonNames(item.addons);
+            const alreadyReviewed = reviewed.has(`${activeOrder.id}:${item.productId}`);
 
-            <div
-              key={i}
-              className="pt-2 flex items-center justify-between text-xs"
-            >
+            return (
+              <div key={i} className="pt-2 space-y-2">
+                <div className="flex items-center justify-between text-xs">
 
-              <div>
+                  <div>
 
-                <div className="font-extrabold text-brand-black">
-                  {item.quantity}x {item.productName || item.name}
+                    <div className="font-extrabold text-brand-black">
+                      {item.quantity}x {item.productName || item.name}
+                    </div>
+
+                    <div className="text-[11px] text-gray-500">
+
+                      {item.variant && (
+                        <span>{item.variant} • </span>
+                      )}
+
+                      {item.spiceLevel && (
+                        <span>
+                          {item.spiceLevel === 'spicy'
+                            ? '🌶️ Spicy'
+                            : '🙂 Non-Spicy'}
+                        </span>
+                      )}
+
+                      {extras.length > 0 && (
+                        <span> • +{extras.join(', ')}</span>
+                      )}
+
+                    </div>
+
+                    {item.customization?.description && (
+                      <p className="mt-1 text-[11px] text-gray-600">“{item.customization.description}”</p>
+                    )}
+
+                    {item.customization?.customerNote && (
+                      <p className="mt-1 text-[11px] text-gray-600">Note: {item.customization.customerNote}</p>
+                    )}
+
+                  </div>
+
+                  <div className="font-black text-brand-black">
+                    ₹{item.itemTotal || item.priceAtOrder * item.quantity}
+                  </div>
+
                 </div>
 
-                <div className="text-[11px] text-gray-500">
+                {/* Reference photos of a custom order */}
+                {item.images?.length > 0 && <PhotoStrip images={item.images} size="w-12 h-12" />}
 
-                  {item.variant && (
-                    <span>{item.variant} • </span>
-                  )}
-
-                  {item.spiceLevel && (
-                    <span>
-                      {item.spiceLevel === 'spicy'
-                        ? '🌶️ Spicy'
-                        : '🙂 Non-Spicy'}
-                    </span>
-                  )}
-
-                  {item.addons && item.addons.length > 0 && (
-                    <span> • +{item.addons.join(', ')}</span>
-                  )}
-
-                </div>
-
+                {/* Rate & review (Zuxu, after delivery, catalogue products) */}
+                {canReview && item.productId && (
+                  alreadyReviewed ? (
+                    <p className="text-[11px] font-bold text-emerald-600">✓ You reviewed this — thank you!</p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setReviewItem(item)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-pink-50 border border-pink-100 px-3 py-1.5 text-[11px] font-black text-pink-700 hover:bg-pink-100"
+                    >
+                      <Star className="w-3.5 h-3.5" /> Rate & add photos
+                    </button>
+                  )
+                )}
               </div>
-
-              <div className="font-black text-brand-black">
-                ₹{item.itemTotal || item.priceAtOrder * item.quantity}
-              </div>
-
-            </div>
-
-          ))}
+            );
+          })}
 
         </div>
 
@@ -525,12 +623,24 @@ export default function OrderTrackingView({
             className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-brand-black font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-colors"
           >
             <Phone className="w-3.5 h-3.5" />
-            <span>Call Hostel Kitchen / Delivery Guy</span>
+            <span>{isZuxuOrder ? 'Call Bhook_Lgi / Zuxu support' : 'Call Hostel Kitchen / Delivery Guy'}</span>
           </a>
 
         </div>
 
       </div>
+
+      {reviewItem && (
+        <ReviewModal
+          order={activeOrder}
+          item={reviewItem}
+          onClose={() => setReviewItem(null)}
+          onSaved={async () => {
+            setReviewItem(null);
+            await loadMyReviews();
+          }}
+        />
+      )}
 
     </div>
   );

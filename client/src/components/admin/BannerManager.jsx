@@ -3,6 +3,8 @@ import {
   Save, RotateCcw, Image as ImageIcon, Eye, EyeOff,
   Upload, Trash2, ExternalLink, Link as LinkIcon, Loader2,
 } from 'lucide-react';
+import { api, resolveMediaUrl } from '../../services/api';
+import { compressPhoto } from '../../utils/images';
 
 const DEFAULT_SLIDES = [
   {
@@ -46,60 +48,28 @@ const DEFAULT_SLIDES = [
   },
 ];
 
-const STORAGE_KEY = 'bhook_home_slides';
-
-const compressImage = (file) =>
-  new Promise((resolve, reject) => {
-    if (!file || !file.type?.startsWith('image/')) {
-      reject(new Error('Please select a valid image file.'));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Could not read the selected image.'));
-    reader.onload = () => {
-      const img = new window.Image();
-      img.onerror = () => reject(new Error('Could not process this image.'));
-      img.onload = () => {
-        const maxDimension = 1600;
-        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        const context = canvas.getContext('2d');
-        if (!context) {
-          reject(new Error('Image processing is not supported in this browser.'));
-          return;
-        }
-        context.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
 export default function BannerManager() {
   const [slides, setSlides] = useState(DEFAULT_SLIDES);
   const [message, setMessage] = useState('');
   const [uploadingId, setUploadingId] = useState('');
+  const [saving, setSaving] = useState(false);
   const fileInputRefs = useRef({});
 
+  // Banners live on the server so every customer sees them.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        setSlides(DEFAULT_SLIDES.map((base) => {
-          const existing = parsed.find((item) => item.id === base.id);
-          return existing ? { ...base, ...existing } : base;
-        }));
-      }
-    } catch (error) {
-      console.error('Could not load slides:', error);
-      setMessage('Could not load saved banners. Defaults are being shown.');
-    }
+    api.getBanners()
+      .then((res) => {
+        if (Array.isArray(res.data) && res.data.length) {
+          setSlides(DEFAULT_SLIDES.map((base) => {
+            const existing = res.data.find((item) => item.id === base.id);
+            return existing ? { ...base, ...existing } : base;
+          }));
+        }
+      })
+      .catch((error) => {
+        console.error('Could not load slides:', error);
+        setMessage('Could not load saved banners. Defaults are being shown.');
+      });
   }, []);
 
   const showMessage = (text) => {
@@ -119,9 +89,10 @@ export default function BannerManager() {
     const slideId = slides[index].id;
     try {
       setUploadingId(slideId);
-      const image = await compressImage(file);
-      updateSlide(index, 'image', image);
-      showMessage('Image selected. Click Save Changes to save the banner.');
+      const image = await compressPhoto(file, { maxDimension: 1600, quality: 0.82 });
+      const res = await api.uploadBannerImage(image);
+      updateSlide(index, 'image', res.data.url);
+      showMessage('Image uploaded. Click Save Changes to publish the banner.');
     } catch (error) {
       showMessage(error.message || 'Image upload failed.');
     } finally {
@@ -130,21 +101,34 @@ export default function BannerManager() {
     }
   };
 
-  const saveSlides = () => {
+  const saveSlides = async () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(slides));
-      showMessage('Banners saved in this browser successfully.');
+      setSaving(true);
+      const res = await api.saveBanners(slides);
+      if (Array.isArray(res.data)) {
+        setSlides(DEFAULT_SLIDES.map((base) => {
+          const existing = res.data.find((item) => item.id === base.id);
+          return existing ? { ...base, ...existing } : base;
+        }));
+      }
+      showMessage('Banners published ✓ Every customer now sees them on the homepage.');
     } catch (error) {
       console.error('Could not save banners:', error);
-      showMessage('Could not save. Try a smaller banner image.');
+      showMessage(error.message || 'Could not save banners.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const resetSlides = () => {
+  const resetSlides = async () => {
     if (!window.confirm('Reset all homepage banners to default content?')) return;
-    setSlides(DEFAULT_SLIDES);
-    localStorage.removeItem(STORAGE_KEY);
-    showMessage('Default banners restored.');
+    try {
+      await api.resetBanners();
+      setSlides(DEFAULT_SLIDES);
+      showMessage('Default banners restored for everyone.');
+    } catch (error) {
+      showMessage(error.message || 'Could not reset banners.');
+    }
   };
 
   return (
@@ -161,9 +145,10 @@ export default function BannerManager() {
             className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold hover:bg-gray-50">
             <RotateCcw size={16} /> Reset
           </button>
-          <button type="button" onClick={saveSlides}
-            className="flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-bold text-white hover:bg-gray-800">
-            <Save size={16} /> Save Changes
+          <button type="button" onClick={saveSlides} disabled={saving}
+            className="flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-50">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? 'Publishing…' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -195,7 +180,7 @@ export default function BannerManager() {
 
           <div className="mb-4 overflow-hidden rounded-xl border bg-gray-50">
             {slide.image ? (
-              <img src={slide.image} alt={`${slide.title} banner preview`}
+              <img src={resolveMediaUrl(slide.image)} alt={`${slide.title} banner preview`}
                 className="h-44 w-full object-cover" />
             ) : (
               <div className={`flex h-44 items-center justify-center bg-gradient-to-r ${
@@ -291,9 +276,8 @@ export default function BannerManager() {
       ))}
 
       <p className="rounded-xl bg-yellow-50 p-3 text-xs text-yellow-800">
-        Important: this version saves banner settings in this browser only using localStorage.
-        Uploaded images are stored as compressed image data. To show the same banners on every
-        customer device, the next step is connecting this manager and the homepage to your server API.
+        Banners are saved on the server and shown to every customer as soon as you click
+        Save Changes. Links must start with <b>/</b> (inside the app) or <b>https://</b>.
       </p>
     </div>
   );

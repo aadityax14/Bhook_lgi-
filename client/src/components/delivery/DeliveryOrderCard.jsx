@@ -5,6 +5,7 @@ import {
   Package,
   CheckCircle2,
   Navigation,
+  Phone,
 } from 'lucide-react';
 
 export default function DeliveryOrderCard({ order, onStatusChange }) {
@@ -29,6 +30,12 @@ export default function DeliveryOrderCard({ order, onStatusChange }) {
             <h3 className="text-xl font-black text-brand-black">
               {order.orderNumber || `#${order.id}`}
             </h3>
+
+            {order.orderType === 'zuxu' && (
+              <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-pink-100 text-pink-700">
+                🎀 ZUXU — pick up from Zuxu
+              </span>
+            )}
           </div>
 
           <span
@@ -74,15 +81,33 @@ export default function DeliveryOrderCard({ order, onStatusChange }) {
       <div className="p-5">
 
         {/* Customer */}
-        {order.customerName && (
-          <div className="mb-4">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-              Customer
-            </p>
+        {(order.customerName || order.customerPhone) && (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">
+                Customer
+              </p>
 
-            <p className="font-bold text-gray-900 mt-1">
-              {order.customerName}
-            </p>
+              <p className="font-bold text-gray-900 mt-1 truncate">
+                {order.customerName || 'Customer'}
+              </p>
+
+              {order.customerPhone && (
+                <p className="text-sm font-mono text-gray-600">
+                  {order.customerPhone}
+                </p>
+              )}
+            </div>
+
+            {order.customerPhone && (
+              <a
+                href={`tel:${order.customerPhone}`}
+                className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-black hover:bg-green-700"
+              >
+                <Phone className="w-4 h-4" />
+                Call
+              </a>
+            )}
           </div>
         )}
 

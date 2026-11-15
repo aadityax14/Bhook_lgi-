@@ -3,7 +3,7 @@ import { X, User } from "lucide-react";
 import { api } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
-export default function LoginModal({ onClose }) {
+export default function LoginModal({ onClose, onSuccess }) {
   const { login } = useAuth();
 
   const [mode, setMode] = useState("login");
@@ -56,8 +56,13 @@ export default function LoginModal({ onClose }) {
       // Save real database user + JWT
       login(result.user, result.token);
 
-      // Close modal after successful authentication
-      onClose();
+      // After successful authentication: let the caller continue
+      // (e.g. checkout), otherwise just close the modal.
+      if (onSuccess) {
+        onSuccess(result.user);
+      } else {
+        onClose();
+      }
     } catch (err) {
       console.error("Authentication error:", err);
 
@@ -215,7 +220,7 @@ export default function LoginModal({ onClose }) {
           {mode === "login" && (
             <div className="mt-6">
               <label className="mb-1 block text-sm font-semibold">
-                Phone Number or Email
+                Phone, Email or Staff Login ID
               </label>
 
               <input
@@ -224,7 +229,7 @@ export default function LoginModal({ onClose }) {
                 onChange={(e) =>
                   setIdentifier(e.target.value)
                 }
-                placeholder="Phone number or email"
+                placeholder="Phone, email or e.g. BL-CHEF-001"
                 required
                 autoComplete="username"
                 className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-brand-yellow"

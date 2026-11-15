@@ -13,6 +13,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import ProductReviews from './zuxu/ProductReviews';
 
 const formatPrice = (value) => `₹${Number(value || 0).toFixed(0)}`;
 
@@ -509,6 +510,9 @@ export default function ZuxuProductDetails({ product, onClose }) {
               </p>
             </div>
           </div>
+
+          {/* Reviews with customer photos */}
+          <ProductReviews productId={product.id} />
         </div>
       </div>
     </div>

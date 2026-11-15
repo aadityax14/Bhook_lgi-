@@ -22,7 +22,8 @@ export default function ChefDashboard() {
       const res = await api.getOrders();
 
       if (res && res.data) {
-        setOrders(res.data);
+        // Zuxu (handmade) orders are handled by the admin, not the kitchen.
+        setOrders(res.data.filter(order => order.orderType !== 'zuxu'));
       }
     } catch (err) {
       console.error('Failed to fetch chef orders:', err);
