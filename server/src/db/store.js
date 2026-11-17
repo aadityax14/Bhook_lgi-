@@ -1,117 +1,359 @@
-import { pool, withTransaction } from './postgres.js';
-import { DEFAULT_SELLER_ID, DEFAULT_STORE_ID } from './migrate.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { WhatsAppNotificationService } from '../services/whatsappService.js';
 
-const BHEL_HALF_ID = 'prod-bhel-half';
-const BHEL_FULL_ID = 'prod-bhel-full';
-const BHEL_PRODUCT_IDS = [BHEL_HALF_ID, BHEL_FULL_ID];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_FILE = path.join(__dirname, '../data/db.json');
 
-const DEFAULT_PRODUCT_IMAGE =
-  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80';
-
-const ORDER_SELECT = `
-  SELECT
-    o.*,
-    COALESCE(
-      (SELECT json_agg(oi ORDER BY oi.position)
-       FROM order_items oi
-       WHERE oi.order_id = o.id),
-      '[]'::json
-    ) AS items
-  FROM orders o
-`;
-
-// Error carrying an HTTP status, so routes can return 409 for stock problems.
-function stockError(message) {
-  const err = new Error(message);
-  err.status = 409;
-  return err;
-}
-
-function toIso(value) {
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-// =========================================================
-// ROW MAPPERS (snake_case rows -> the camelCase shape the client uses)
-// =========================================================
-
-function toProduct(row) {
-  const product = {
-    id: row.id,
-    sellerId: row.seller_id,
-    storeId: row.store_id,
-    categoryId: row.category_id,
-    name: row.name,
-    description: row.description || '',
-    price: Number(row.price),
-    isAvailable: row.is_available,
-    isCooked: row.is_cooked,
-    allowsSpiceCustomization: row.allows_spice_customization,
-    imageUrl: row.image_url,
-    variants: row.variants || [],
-    addons: row.addons || [],
-    tags: row.tags || [],
-    stockType: row.stock_type,
-    createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at)
-  };
-
-  if (row.stock_type === 'bhel') {
-    product.stockHalfUnits = Number(row.stock_half_units) || 0;
-  } else {
-    product.stockQuantity = Number(row.stock_quantity) || 0;
+const INITIAL_SELLERS = [
+  {
+    id: 'seller-bhook-lgi',
+    storeId: 'store-bhook-lgi',
+    name: 'Bhook_Lgi Official',
+    handle: 'bhook_lgi',
+    category: 'Food & Snacks',
+    description: 'Late night student hostel kitchen - Fresh Bhel, piping hot Maggi & snacks.',
+    avatar: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=400&q=80',
+    banner: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80',
+    status: 'active',
+    whatsapp: {
+      number: '+919999988888',
+      notifyOnNewOrder: true,
+      notifyOnStatusChange: true
+    },
+    commissionRate: 0.05,
+    createdAt: new Date('2026-09-01T00:00:00.000Z').toISOString()
+  },
+  {
+    id: 'seller-zuxu',
+    storeId: 'store-zuxu',
+    name: 'Zuxu',
+    handle: 'zuxu',
+    category: 'Handmade Gifts & Accessories',
+    description: 'Handcrafted with love for students. Cute hairpins, rings, earrings, keychains, crochet gifts & custom bouquets.',
+    avatar: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=400&q=80',
+    banner: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=1200&q=80',
+    status: 'active',
+    whatsapp: {
+      number: '+919876543210',
+      notifyOnNewOrder: true,
+      notifyOnStatusChange: true
+    },
+    commissionRate: 0.10,
+    createdAt: new Date('2026-09-15T00:00:00.000Z').toISOString()
   }
+];
 
-  return product;
-}
+const INITIAL_CATEGORIES = [
+  { id: 'all', name: 'All Items', slug: 'all', icon: '🔥' },
+  { id: 'bhel', name: 'Bhel', slug: 'bhel', icon: '🥗' },
+  { id: 'maggie', name: 'Maggie', slug: 'maggie', icon: '🍜' },
+  { id: 'snacks', name: 'Snacks', slug: 'snacks', icon: '🍿' },
+  { id: 'biscuits', name: 'Biscuits', slug: 'biscuits', icon: '🍪' },
+  { id: 'cooked', name: 'Cooked', slug: 'cooked', icon: '🥡' },
+  { id: 'uncooked', name: 'Uncooked', slug: 'uncooked', icon: '📦' },
+  { id: 'accessories', name: 'Accessories', slug: 'accessories', icon: '✨' },
+  { id: 'crochet', name: 'Crochet Crafts', slug: 'crochet', icon: '🧶' },
+  { id: 'jewelry', name: 'Jewelry', slug: 'jewelry', icon: '💍' },
+  { id: 'bouquets', name: 'Bouquets', slug: 'bouquets', icon: '💐' },
+  { id: 'gifts', name: 'Gifts & Sets', slug: 'gifts', icon: '🎁' }
+];
 
-function toOrderItem(item) {
-  return {
-    productId: item.product_id,
-    productName: item.product_name,
-    variant: item.variant_name,
-    spiceLevel: item.spice_level,
-    addons: item.addons || [],
-    quantity: item.quantity,
-    priceAtOrder: Number(item.price_at_order),
-    itemTotal: Number(item.item_total)
-  };
-}
+const INITIAL_PRODUCTS = [
+  {
+    id: 'prod-bhel-half',
+    categoryId: 'bhel',
+    name: 'Half Bhel',
+    description:
+      'Crispy puffed rice, tangy tamarind & spicy mint chutney, tossed with fresh chopped onions, tomatoes & nylon sev.',
+    price: 35,
+    isAvailable: true,
 
-function toOrder(row) {
-  return {
-    id: row.id,
-    orderNumber: row.order_number,
-    customerName: row.customer_name,
-    customerPhone: row.customer_phone,
-    hostel: row.hostel,
-    roomNumber: row.room_number,
-    deliveryType: row.delivery_type,
-    deliveryNotes: row.delivery_notes || '',
-    items: (row.items || []).map(toOrderItem),
-    subtotal: Number(row.subtotal),
-    deliveryFee: Number(row.delivery_fee),
-    packagingFee: Number(row.packaging_fee),
-    total: Number(row.total),
-    status: row.status,
-    stockDeducted: row.stock_deducted,
-    etaMinutes: row.eta_minutes,
-    createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at)
-  };
-}
+    // IMPORTANT:
+    // This field now stores SHARED BHEL quantity.
+    // 1 Shared = 1 Full OR 2 Half.
+    stockHalfUnits: 2,
 
-function toNotification(row) {
-  return {
-    id: row.id,
-    orderId: row.order_id,
-    title: row.title,
-    message: row.message,
-    type: row.type,
-    isRead: row.is_read,
-    createdAt: toIso(row.created_at)
-  };
-}
+    stockType: 'bhel',
+    isCooked: false,
+    allowsSpiceCustomization: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=600&q=80',
+    variants: [
+      { name: 'Half Bhel (Regular)', price: 35 }
+    ],
+    addons: [
+      { id: 'extra-sev', name: 'Extra Crispy Sev', price: 5 },
+      { id: 'extra-onion', name: 'Extra Chopped Onions', price: 5 }
+    ],
+    tags: ['bhel', 'cooked', 'popular', 'snack']
+  },
+
+  {
+    id: 'prod-bhel-full',
+    categoryId: 'bhel',
+    name: 'Full Bhel',
+    description:
+      'Hostel special full portion! Loaded crispy bhel puri with roasted peanuts, sweet-tangy chutney, coriander & generous sev topping.',
+    price: 65,
+    isAvailable: true,
+
+    // Shared Bhel quantity
+    stockHalfUnits: 2,
+
+    stockType: 'bhel',
+    isCooked: false,
+    allowsSpiceCustomization: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=600&q=80',
+    variants: [
+      { name: 'Full Bhel (Loaded)', price: 65 }
+    ],
+    addons: [
+      { id: 'extra-sev', name: 'Extra Crispy Sev', price: 5 },
+      { id: 'extra-peanuts', name: 'Roasted Spiced Peanuts', price: 10 }
+    ],
+    tags: ['bhel', 'cooked', 'bestseller']
+  },
+
+  {
+    id: 'prod-maggie-cooked',
+    categoryId: 'maggie',
+    name: 'Cooked Maggie',
+    description:
+      'Piping hot 2-minute masala Maggie prepared fresh in the hostel kitchen with aromatic spices and sweet corn notes.',
+    price: 40,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: true,
+    allowsSpiceCustomization: true,
+    imageUrl:
+      'https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=600&q=80',
+    variants: [
+      { name: 'Single Bowl', price: 40 },
+      { name: 'Double Masala Bowl', price: 70 }
+    ],
+    addons: [
+      { id: 'extra-cheese', name: 'Melted Amul Cheese Cube', price: 15 },
+      { id: 'extra-butter', name: 'Amul Butter Dollop', price: 10 },
+      { id: 'peri-peri', name: 'Peri Peri Masala Sprinkle', price: 5 }
+    ],
+    tags: ['maggie', 'cooked', 'bestseller', 'midnight-craving']
+  },
+
+  {
+    id: 'prod-maggie-packet',
+    categoryId: 'maggie',
+    name: 'Maggie Packet (Raw)',
+    description:
+      'Original Nestle 70g Masala Maggie single pack with magic tastemaker sachet. Keep for late night kettle cooking.',
+    price: 15,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['maggie', 'uncooked', 'essential']
+  },
+
+  {
+    id: 'prod-bingo-chips',
+    categoryId: 'snacks',
+    name: 'Bingo Mad Angles',
+    description:
+      'Achaari Masti flavored crunchy triangle crisps. Perfect tangy punch for group study sessions.',
+    price: 20,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['snacks', 'uncooked', 'chips']
+  },
+
+  {
+    id: 'prod-lays-magic-masala',
+    categoryId: 'snacks',
+    name: "Lay's India's Magic Masala",
+    description:
+      'The legendary blue pack! Spicy and flavorful wavy potato chips made with authentic Indian spices.',
+    price: 20,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1527842891421-42eec6e703ea?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['snacks', 'uncooked', 'chips', 'bestseller']
+  },
+
+  {
+    id: 'prod-lays-cream-onion',
+    categoryId: 'snacks',
+    name: "Lay's American Style Cream & Onion",
+    description:
+      'Classic green pack! Rich sour cream and delicate herb-onion seasoning on ultra-thin crispy chips.',
+    price: 20,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1576402187878-974f70c890a5?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['snacks', 'uncooked', 'chips']
+  },
+
+  {
+    id: 'prod-lays-sizzling-hot',
+    categoryId: 'snacks',
+    name: "Lay's Sizzling Hot",
+    description:
+      'Fiery chili crunch with an intense heat kick. Only for true spice warriors in the hostel.',
+    price: 20,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1621447504864-d8686e12698c?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['snacks', 'uncooked', 'spicy']
+  },
+
+  {
+    id: 'prod-parle-g',
+    categoryId: 'biscuits',
+    name: 'Parle-G Gold Biscuit',
+    description:
+      'Hostel chai’s best friend! Golden baked glucose biscuits loaded with energy and nostalgia.',
+    price: 10,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['biscuits', 'uncooked', 'classic']
+  },
+
+  {
+    id: 'prod-oreo',
+    categoryId: 'biscuits',
+    name: 'Oreo Vanilla Creme',
+    description:
+      'Rich dark chocolate cookies sandwiching sweet vanilla cream. Twist, lick, dunk in milk.',
+    price: 30,
+    isAvailable: true,
+    stockQuantity: 10,
+    stockType: 'normal',
+    isCooked: false,
+    allowsSpiceCustomization: false,
+    imageUrl:
+      'https://images.unsplash.com/photo-1582293041079-7814c2f12063?auto=format&fit=crop&w=600&q=80',
+    variants: [],
+    addons: [],
+    tags: ['biscuits', 'uncooked', 'sweet']
+  }
+];
+
+const INITIAL_ORDERS = [
+  {
+    id: 'bl-ord-1001',
+    orderNumber: '#BL-1001',
+    customerName: 'Aaditya Yadav',
+    customerPhone: '9876543210',
+    hostel: 'GH4',
+    roomNumber: '312',
+    deliveryType: 'room_delivery',
+    deliveryNotes: 'Please call when you reach 3rd floor corridor.',
+    items: [
+      {
+        productId: 'prod-bhel-full',
+        productName: 'Full Bhel',
+        variant: 'Full Bhel (Loaded)',
+        spiceLevel: 'spicy',
+        addons: ['Extra Crispy Sev'],
+        quantity: 1,
+        priceAtOrder: 70,
+        itemTotal: 70
+      },
+      {
+        productId: 'prod-maggie-cooked',
+        productName: 'Cooked Maggie',
+        variant: 'Single Bowl',
+        spiceLevel: 'spicy',
+        addons: ['Melted Amul Cheese Cube'],
+        quantity: 1,
+        priceAtOrder: 55,
+        itemTotal: 55
+      }
+    ],
+    subtotal: 125,
+    deliveryFee: 10,
+    packagingFee: 5,
+    total: 140,
+    status: 'preparing',
+    stockDeducted: false,
+    etaMinutes: 12,
+    createdAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 2).toISOString()
+  }
+];
+
+const INITIAL_NOTIFICATIONS = [
+  {
+    id: 'notif-1',
+    orderId: 'bl-ord-1001',
+    title: 'Order Placed! 🎉',
+    message:
+      'Your Bhook_Lgi order #BL-1001 has been sent to the kitchen.',
+    type: 'order_status',
+    isRead: false,
+    createdAt: new Date(Date.now() - 1000 * 60 * 8).toISOString()
+  },
+  {
+    id: 'notif-2',
+    orderId: 'bl-ord-1001',
+    title: 'Order Accepted! 🔥',
+    message:
+      'Kitchen accepted your order. Cooking starting shortly!',
+    type: 'order_status',
+    isRead: false,
+    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString()
+  },
+  {
+    id: 'notif-3',
+    orderId: 'bl-ord-1001',
+    title: 'Preparing your food 🍜',
+    message:
+      'Chef is preparing your spicy Bhel and Cheese Maggie.',
+    type: 'order_status',
+    isRead: false,
+    createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString()
+  }
+];
 
 // Delivery & packing charges (the admin can change these).
 // Delivery is cheaper when a chef on duty today lives in the
@@ -127,7 +369,6 @@ const DEFAULT_SETTINGS = {
 };
 
 class DataStore {
-<<<<<<< HEAD
   constructor() {
     this.data = {
       sellers: INITIAL_SELLERS,
@@ -421,49 +662,57 @@ if (product.isActive === undefined) {
     }
   }
 
-=======
->>>>>>> main
   // =========================================================
   // PRODUCTS
   // =========================================================
 
-  async getProducts(categoryFilter, search) {
-    const conditions = [];
-    const params = [];
+  getProducts(categoryFilter, search) {
+    let list = [...this.data.products];
 
-    if (categoryFilter && categoryFilter !== 'all') {
+    if (
+      categoryFilter &&
+      categoryFilter !== 'all'
+    ) {
       if (categoryFilter === 'cooked') {
-        conditions.push('is_cooked = TRUE');
+        list = list.filter(
+          product => product.isCooked
+        );
       } else if (categoryFilter === 'uncooked') {
-        conditions.push('is_cooked = FALSE');
+        list = list.filter(
+          product => !product.isCooked
+        );
       } else {
-        params.push(categoryFilter);
-        conditions.push(`category_id = $${params.length}`);
+        list = list.filter(
+          product =>
+            product.categoryId === categoryFilter
+        );
       }
     }
 
-    if (search && search.trim()) {
-      params.push(search.toLowerCase().trim());
-      const p = `$${params.length}`;
+    if (search) {
+      const q = search.toLowerCase().trim();
 
-      conditions.push(`(
-        POSITION(${p} IN LOWER(name)) > 0
-        OR POSITION(${p} IN LOWER(COALESCE(description, ''))) > 0
-        OR EXISTS (SELECT 1 FROM UNNEST(tags) tag WHERE POSITION(${p} IN LOWER(tag)) > 0)
-      )`);
+      list = list.filter(product =>
+        product.name.toLowerCase().includes(q) ||
+        product.description.toLowerCase().includes(q) ||
+        (
+          product.tags &&
+          product.tags.some(tag =>
+            tag.toLowerCase().includes(q)
+          )
+        )
+      );
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const { rows } = await pool.query(
-      `SELECT * FROM products ${where} ORDER BY created_at DESC, id`,
-      params
-    );
-
-    return rows.map(toProduct);
+    return list;
   }
 
-<<<<<<< HEAD
+  getProductById(id) {
+    return this.data.products.find(
+      product => product.id === id
+    );
+  }
+
  createProduct(productData) {
   const stockType =
     productData.stockType ||
@@ -592,89 +841,23 @@ if (product.isActive === undefined) {
     const idx =
       this.data.products.findIndex(
         product => product.id === id
-=======
-  async getProductById(id, db = pool) {
-    const { rows } = await db.query('SELECT * FROM products WHERE id = $1', [id]);
-    return rows[0] ? toProduct(rows[0]) : null;
-  }
-
-  async createProduct(productData) {
-    const stockType =
-      productData.stockType ||
-      (productData.categoryId === 'bhel' ? 'bhel' : 'normal');
-
-    const isBhel = stockType === 'bhel';
-    const stock = Math.max(
-      0,
-      Number(isBhel ? productData.stockHalfUnits : productData.stockQuantity) || 0
-    );
-
-    const id = `prod-${Date.now()}`;
-
-    // Unknown categories are stored as NULL instead of failing the foreign key.
-    await pool.query(
-      `INSERT INTO products
-        (id, seller_id, store_id, category_id, name, description, price, is_available,
-         is_cooked, allows_spice_customization, image_url, variants, addons, tags,
-         stock_quantity, stock_half_units, stock_type)
-       VALUES ($1, $2, $3, (SELECT id FROM categories WHERE id = $4), $5, $6, $7, $8,
-               $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-      [
-        id,
-        DEFAULT_SELLER_ID,
-        DEFAULT_STORE_ID,
-        productData.categoryId || null,
-        productData.name,
-        productData.description || '',
-        Number(productData.price) || 0,
-        stock > 0,
-        Boolean(productData.isCooked),
-        Boolean(productData.allowsSpiceCustomization),
-        productData.imageUrl || DEFAULT_PRODUCT_IMAGE,
-        JSON.stringify(productData.variants || []),
-        JSON.stringify(productData.addons || []),
-        productData.tags || [],
-        isBhel ? null : stock,
-        isBhel ? stock : null,
-        stockType
-      ]
-    );
-
-    return this.getProductById(id);
-  }
-
-  async updateProduct(id, updates) {
-    return withTransaction(async client => {
-      const { rows } = await client.query(
-        'SELECT * FROM products WHERE id = $1 FOR UPDATE',
-        [id]
->>>>>>> main
       );
 
-      if (rows.length === 0) {
-        return null;
-      }
+    if (idx === -1) {
+      return null;
+    }
 
-      const isBhel = this.isBhelProduct(id);
+    const currentProduct =
+      this.data.products[idx];
 
-      // Only these fields can be changed; anything else in the body is ignored.
-      const columns = {
-        name: 'name',
-        description: 'description',
-        price: 'price',
-        categoryId: 'category_id',
-        isAvailable: 'is_available',
-        isCooked: 'is_cooked',
-        allowsSpiceCustomization: 'allows_spice_customization',
-        imageUrl: 'image_url',
-        variants: 'variants',
-        addons: 'addons',
-        tags: 'tags'
-      };
+    const cleanedUpdates = {
+      ...updates
+    };
 
-      const values = {};
+    // ---------------------------------------------------------
+    // NORMAL STOCK
+    // ---------------------------------------------------------
 
-<<<<<<< HEAD
     if (
   cleanedUpdates.stockQuantity !== undefined &&
   !this.isBhelProduct(id)
@@ -718,48 +901,55 @@ if (product.isActive === undefined) {
       this.data.products.forEach(product => {
         if (!this.isBhelProduct(product.id)) {
           return;
-=======
-      for (const [field, column] of Object.entries(columns)) {
-        if (updates[field] !== undefined) {
-          values[column] =
-            field === 'variants' || field === 'addons'
-              ? JSON.stringify(updates[field])
-              : updates[field];
->>>>>>> main
         }
-      }
 
-      // NORMAL STOCK
-      if (updates.stockQuantity !== undefined && !isBhel) {
-        const stock = Math.max(0, Number(updates.stockQuantity) || 0);
-        values.stock_quantity = stock;
-        values.stock_type = 'normal';
-        values.is_available = stock > 0;
-      }
+        product.stockType = 'bhel';
 
-      const setClauses = Object.keys(values).map((column, i) => `${column} = $${i + 2}`);
-      setClauses.push('updated_at = NOW()');
+        product.stockHalfUnits =
+          newStock;
 
-      await client.query(
-        `UPDATE products SET ${setClauses.join(', ')} WHERE id = $1`,
-        [id, ...Object.values(values)]
-      );
+        product.isAvailable =
+          newStock > 0;
 
-      // BHEL SHARED STOCK
-      // The entered value is SHARED BHEL quantity:
-      // 1 shared = 1 full or 2 half, applied to both Bhel products.
-      if (updates.stockHalfUnits !== undefined && isBhel) {
-        const shared = Math.max(0, Number(updates.stockHalfUnits) || 0);
-        await this.setBhelStock(client, shared);
-      }
+        product.updatedAt = now;
+      });
 
-      return this.getProductById(id, client);
-    });
+      this.persist();
+
+      return this.data.products[idx];
+    }
+
+    // ---------------------------------------------------------
+    // NORMAL PRODUCT UPDATE
+    // ---------------------------------------------------------
+
+    this.data.products[idx] = {
+      ...currentProduct,
+      ...cleanedUpdates,
+      updatedAt:
+        new Date().toISOString()
+    };
+
+    this.persist();
+
+    return this.data.products[idx];
   }
 
-  async deleteProduct(id) {
-    const { rowCount } = await pool.query('DELETE FROM products WHERE id = $1', [id]);
-    return rowCount > 0;
+  deleteProduct(id) {
+    const idx =
+      this.data.products.findIndex(
+        product => product.id === id
+      );
+
+    if (idx === -1) {
+      return false;
+    }
+
+    this.data.products.splice(idx, 1);
+
+    this.persist();
+
+    return true;
   }
 
   // =========================================================
@@ -767,165 +957,393 @@ if (product.isActive === undefined) {
   // =========================================================
 
   isBhelProduct(productId) {
-    return BHEL_PRODUCT_IDS.includes(productId);
-  }
-
-  async setBhelStock(client, shared) {
-    await client.query(
-      `UPDATE products
-       SET stock_type = 'bhel',
-           stock_half_units = $2,
-           is_available = $3,
-           updated_at = NOW()
-       WHERE id = ANY($1)`,
-      [BHEL_PRODUCT_IDS, shared, shared > 0]
+    return (
+      productId === 'prod-bhel-half' ||
+      productId === 'prod-bhel-full'
     );
   }
 
-  // Returns { products: Map, bhelShared } for the given items.
-  // Pass lock = true inside a transaction to block concurrent stock changes.
-  async loadStock(db, items, lock = false) {
-    const ids = [
-      ...new Set([
-        ...items.map(item => item.productId),
-        ...(items.some(item => this.isBhelProduct(item.productId)) ? BHEL_PRODUCT_IDS : [])
-      ])
-    ];
-
-    const { rows } = await db.query(
-      `SELECT * FROM products WHERE id = ANY($1) ORDER BY id ${lock ? 'FOR UPDATE' : ''}`,
-      [ids]
+  getBhelProducts() {
+    return this.data.products.filter(
+      product =>
+        product.id === 'prod-bhel-half' ||
+        product.id === 'prod-bhel-full'
     );
-
-    const products = new Map(rows.map(row => [row.id, toProduct(row)]));
-
-    const bhelStocks = BHEL_PRODUCT_IDS
-      .filter(id => products.has(id))
-      .map(id => products.get(id).stockHalfUnits);
-
-    return {
-      products,
-      bhelShared: bhelStocks.length ? Math.max(...bhelStocks) : 0
-    };
   }
 
-  // Works out how much stock an order needs.
-  getRequirements(items) {
-    let bhelRequiredShared = 0;
-    const normalRequirements = {};
+  // IMPORTANT:
+  // This value is SHARED BHEL quantity.
+  //
+  // Shared 1 = 1 Full = 2 Half.
+  //
+  getBhelStockHalfUnits() {
+    const bhelProducts =
+      this.getBhelProducts();
 
-    for (const item of items) {
-      const quantity = Math.max(1, Number(item.quantity) || 1);
-
-      if (this.isBhelProduct(item.productId)) {
-        // 1 Full = 1 Shared, 2 Half = 1 Shared
-        bhelRequiredShared +=
-          item.productId === BHEL_FULL_ID ? quantity : quantity / 2;
-        continue;
-      }
-
-      normalRequirements[item.productId] =
-        (normalRequirements[item.productId] || 0) + quantity;
+    if (bhelProducts.length === 0) {
+      return 0;
     }
 
-    return { bhelRequiredShared, normalRequirements };
+    return Math.max(
+      ...bhelProducts.map(
+        product =>
+          Number(product.stockHalfUnits) || 0
+      )
+    );
   }
 
-  validateStock(items, { products, bhelShared }, requireAvailable) {
-    for (const item of items) {
-      const product = products.get(item.productId);
+  syncBhelStock() {
+    const sharedQuantity =
+      this.getBhelStockHalfUnits();
 
-      if (!product) {
-        return { ok: false, error: `Product not found: ${item.productId}` };
+    const now =
+      new Date().toISOString();
+
+    this.data.products.forEach(product => {
+      if (!this.isBhelProduct(product.id)) {
+        return;
       }
 
-      // Admin manually marked the item as out of stock.
-      if (requireAvailable && !product.isAvailable) {
-        return { ok: false, error: `"${product.name}" is currently Out of Stock.` };
+      product.stockType = 'bhel';
+
+      product.stockHalfUnits =
+        sharedQuantity;
+
+      product.isAvailable =
+        sharedQuantity > 0;
+
+      product.updatedAt = now;
+    });
+  }
+
+  // =========================================================
+  // AVAILABLE QUANTITY
+  // =========================================================
+
+  getProductAvailableQuantity(productId) {
+    const product =
+      this.getProductById(productId);
+
+    if (!product) {
+      return 0;
+    }
+
+    // BHEL
+    if (this.isBhelProduct(productId)) {
+      const sharedQuantity =
+        this.getBhelStockHalfUnits();
+
+      // 1 Shared = 1 Full
+      if (
+        productId === 'prod-bhel-full'
+      ) {
+        return sharedQuantity;
+      }
+
+      // 1 Shared = 2 Half
+      if (
+        productId === 'prod-bhel-half'
+      ) {
+        return sharedQuantity * 2;
       }
     }
 
-    const { bhelRequiredShared, normalRequirements } = this.getRequirements(items);
-
-    if (bhelRequiredShared > bhelShared) {
-      return {
-        ok: false,
-        error:
-          bhelShared === 0
-            ? 'Bhel is currently Out of Stock.'
-            : `Not enough Bhel stock. Available: ${bhelShared} Full Bhel or ${bhelShared * 2} Half Bhel.`
-      };
-    }
-
-    for (const [productId, requiredQuantity] of Object.entries(normalRequirements)) {
-      const product = products.get(productId);
-      const available = Math.max(0, Number(product.stockQuantity) || 0);
-
-      if (requiredQuantity > available) {
-        return {
-          ok: false,
-          error: `"${product.name}" has only ${available} left in stock.`
-        };
-      }
-    }
-
-    return { ok: true };
+    // NORMAL PRODUCT
+    return Math.max(
+      0,
+      Number(product.stockQuantity) || 0
+    );
   }
 
   // =========================================================
   // CHECK ORDER STOCK
   // =========================================================
 
-  async checkOrderStock(items, db = pool) {
-    const stock = await this.loadStock(db, items);
-    return this.validateStock(items, stock, true);
+  checkOrderStock(items) {
+    let bhelRequiredShared = 0;
+
+    const normalRequirements = {};
+
+    // ---------------------------------------------------------
+    // Calculate required stock
+    // ---------------------------------------------------------
+
+    for (const item of items) {
+      const product =
+        this.getProductById(
+          item.productId
+        );
+
+      if (!product) {
+        return {
+          ok: false,
+          error:
+            `Product not found: ${item.productId}`
+        };
+      }
+
+      const quantity =
+        Math.max(
+          1,
+          Number(item.quantity) || 1
+        );
+
+      // -------------------------------------------------------
+      // BHEL
+      // -------------------------------------------------------
+
+      if (
+        this.isBhelProduct(
+          item.productId
+        )
+      ) {
+        if (
+          item.productId ===
+          'prod-bhel-full'
+        ) {
+          // 1 Full = 1 Shared
+          bhelRequiredShared +=
+            quantity;
+        } else {
+          // 2 Half = 1 Shared
+          bhelRequiredShared +=
+            quantity / 2;
+        }
+
+        continue;
+      }
+
+      // -------------------------------------------------------
+      // NORMAL
+      // -------------------------------------------------------
+
+      normalRequirements[
+        item.productId
+      ] =
+        (
+          normalRequirements[
+            item.productId
+          ] || 0
+        ) + quantity;
+    }
+
+    // ---------------------------------------------------------
+    // CHECK BHEL
+    // ---------------------------------------------------------
+
+    if (bhelRequiredShared > 0) {
+      const availableShared =
+        this.getBhelStockHalfUnits();
+
+      if (
+        bhelRequiredShared >
+        availableShared
+      ) {
+        const availableHalf =
+          availableShared * 2;
+
+        return {
+          ok: false,
+          error:
+            availableShared === 0
+              ? 'Bhel is currently Out of Stock.'
+              : `Not enough Bhel stock. Available: ${availableShared} Full Bhel or ${availableHalf} Half Bhel.`
+        };
+      }
+    }
+
+    // ---------------------------------------------------------
+    // CHECK NORMAL PRODUCTS
+    // ---------------------------------------------------------
+
+    for (const [
+      productId,
+      requiredQuantity
+    ] of Object.entries(
+      normalRequirements
+    )) {
+      const available =
+        this.getProductAvailableQuantity(
+          productId
+        );
+
+      const product =
+        this.getProductById(
+          productId
+        );
+
+      if (
+        requiredQuantity >
+        available
+      ) {
+        return {
+          ok: false,
+          error:
+            `"${product.name}" has only ${available} left in stock.`
+        };
+      }
+    }
+
+    return {
+      ok: true
+    };
   }
 
   // =========================================================
-  // DEDUCT STOCK (must run inside a transaction)
+  // DEDUCT STOCK
   // =========================================================
 
-  async deductStockForOrder(client, items) {
-    const stock = await this.loadStock(client, items, true);
-    const stockCheck = this.validateStock(items, stock, false);
+  deductStockForOrder(items) {
+    const stockCheck =
+      this.checkOrderStock(items);
 
     if (!stockCheck.ok) {
       return stockCheck;
     }
 
-    const { bhelRequiredShared, normalRequirements } = this.getRequirements(items);
+    let bhelRequiredShared = 0;
 
-    for (const [productId, quantity] of Object.entries(normalRequirements)) {
-      await client.query(
-        `UPDATE products
-         SET stock_quantity = GREATEST(0, COALESCE(stock_quantity, 0) - $2),
-             is_available = GREATEST(0, COALESCE(stock_quantity, 0) - $2) > 0,
-             stock_type = 'normal',
-             updated_at = NOW()
-         WHERE id = $1`,
-        [productId, quantity]
-      );
+    // ---------------------------------------------------------
+    // Calculate BHEL requirement
+    // ---------------------------------------------------------
+
+    for (const item of items) {
+      if (
+        !this.isBhelProduct(
+          item.productId
+        )
+      ) {
+        continue;
+      }
+
+      const quantity =
+        Math.max(
+          1,
+          Number(item.quantity) || 1
+        );
+
+      if (
+        item.productId ===
+        'prod-bhel-full'
+      ) {
+        // 1 Full = 1 Shared
+        bhelRequiredShared +=
+          quantity;
+      } else {
+        // 2 Half = 1 Shared
+        bhelRequiredShared +=
+          quantity / 2;
+      }
     }
+
+    // ---------------------------------------------------------
+    // DEDUCT NORMAL PRODUCTS
+    // ---------------------------------------------------------
+
+    for (const item of items) {
+      if (
+        this.isBhelProduct(
+          item.productId
+        )
+      ) {
+        continue;
+      }
+
+      const product =
+        this.getProductById(
+          item.productId
+        );
+
+      if (!product) {
+        continue;
+      }
+
+      const quantity =
+        Math.max(
+          1,
+          Number(item.quantity) || 1
+        );
+
+      product.stockQuantity =
+        Math.max(
+          0,
+          (
+            Number(
+              product.stockQuantity
+            ) || 0
+          ) - quantity
+        );
+
+      product.isAvailable =
+        product.stockQuantity > 0;
+
+      product.stockType = 'normal';
+
+      product.updatedAt =
+        new Date().toISOString();
+    }
+
+    // ---------------------------------------------------------
+    // DEDUCT SHARED BHEL
+    // ---------------------------------------------------------
 
     if (bhelRequiredShared > 0) {
-      await this.setBhelStock(
-        client,
-        Math.max(0, stock.bhelShared - bhelRequiredShared)
+      const currentShared =
+        this.getBhelStockHalfUnits();
+
+      const newShared =
+        Math.max(
+          0,
+          currentShared -
+            bhelRequiredShared
+        );
+
+      const now =
+        new Date().toISOString();
+
+      this.data.products.forEach(
+        product => {
+          if (
+            !this.isBhelProduct(
+              product.id
+            )
+          ) {
+            return;
+          }
+
+          product.stockType = 'bhel';
+
+          // Store SHARED quantity.
+          product.stockHalfUnits =
+            newShared;
+
+          product.isAvailable =
+            newShared > 0;
+
+          product.updatedAt = now;
+        }
       );
     }
 
-    return { ok: true };
+    this.persist();
+
+    return {
+      ok: true
+    };
   }
 
   // =========================================================
   // ORDERS
   // =========================================================
 
-  async getOrders({ customerPhone } = {}) {
-    const params = [];
-    let where = '';
+  getOrders() {
+    return [...this.data.orders].sort(
+      (a, b) =>
+        new Date(b.createdAt) -
+        new Date(a.createdAt)
+    );
+  }
 
-<<<<<<< HEAD
   getOrderById(id) {
     return this.data.orders.find(
       order =>
@@ -1063,192 +1481,45 @@ if (product.isActive === undefined) {
         orderType === 'zuxu'
           ? `Your Zuxu order ${newOrder.orderNumber} has been placed. We'll keep you posted!`
           : `Your Bhook_Lgi order ${newOrder.orderNumber} is on its way to the kitchen.`,
-=======
-    if (customerPhone !== undefined) {
-      params.push(customerPhone);
-      where = 'WHERE o.customer_phone = $1';
+
+      type: 'order_status'
+    });
+
+    this.persist();
+
+    return newOrder;
+  }
+
+  updateOrderStatus(
+    orderId,
+    status
+  ) {
+    const order =
+      this.getOrderById(orderId);
+
+    if (!order) {
+      return null;
     }
 
-    const { rows } = await pool.query(
-      `${ORDER_SELECT} ${where} ORDER BY o.created_at DESC`,
-      params
-    );
+    // ---------------------------------------------------------
+    // DEDUCT STOCK WHEN ACCEPTED
+    // ---------------------------------------------------------
 
-    return rows.map(toOrder);
-  }
+    if (
+      status === 'accepted' &&
+      !order.stockDeducted
+    ) {
+      const stockResult =
+        this.deductStockForOrder(
+          order.items || []
+        );
 
-  async getOrderById(id, db = pool) {
-    const { rows } = await db.query(
-      `${ORDER_SELECT} WHERE o.id = $1 OR o.order_number = $1 LIMIT 1`,
-      [id]
-    );
-
-    return rows[0] ? toOrder(rows[0]) : null;
-  }
->>>>>>> main
-
-  async createOrder(orderPayload) {
-    const items = orderPayload.items || [];
-
-    return withTransaction(async client => {
-      // IMPORTANT:
-      // Check stock BEFORE creating the order.
-      const stock = await this.loadStock(client, items);
-      const stockCheck = this.validateStock(items, stock, true);
-
-      if (!stockCheck.ok) {
-        throw stockError(stockCheck.error);
-      }
-
-      let orderNumber;
-
-      do {
-        orderNumber = `#BL-${Math.floor(1000 + Math.random() * 9000)}`;
-      } while (
-        (await client.query('SELECT 1 FROM orders WHERE order_number = $1', [orderNumber]))
-          .rowCount > 0
-      );
-
-      const id = `bl-ord-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-      await client.query(
-        `INSERT INTO orders
-          (id, order_number, seller_id, store_id, customer_name, customer_phone, hostel,
-           room_number, delivery_type, delivery_notes, subtotal, delivery_fee, packaging_fee,
-           total, status, stock_deducted, eta_minutes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'placed', FALSE, 15)`,
-        [
-          id,
-          orderNumber,
-          DEFAULT_SELLER_ID,
-          DEFAULT_STORE_ID,
-          orderPayload.customerName || 'Hostel Resident',
-          orderPayload.customerPhone || '',
-          orderPayload.hostel || 'GH4',
-          orderPayload.roomNumber || '',
-          orderPayload.deliveryType || 'room_delivery',
-          orderPayload.deliveryNotes || '',
-          Number(orderPayload.subtotal) || 0,
-          Number(orderPayload.deliveryFee) || 0,
-          Number(orderPayload.packagingFee) || 5,
-          Number(orderPayload.total) || 0
-        ]
-      );
-
-      for (const [position, item] of items.entries()) {
-        await client.query(
-          `INSERT INTO order_items
-            (order_id, product_id, product_name, variant_name, spice_level, addons,
-             quantity, price_at_order, item_total, position)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [
-            id,
-            item.productId,
-            item.productName || stock.products.get(item.productId).name,
-            item.variant || null,
-            item.spiceLevel || null,
-            JSON.stringify(item.addons || []),
-            Math.max(1, Number(item.quantity) || 1),
-            Number(item.priceAtOrder) || 0,
-            Number(item.itemTotal) || 0,
-            position
-          ]
+      if (!stockResult.ok) {
+        throw new Error(
+          stockResult.error
         );
       }
 
-      await this.createNotification(
-        {
-          orderId: id,
-          title: 'Order Placed! 🎉',
-          message: `Your Bhook_Lgi order ${orderNumber} is on its way to the kitchen.`,
-          type: 'order_status'
-        },
-        client
-      );
-
-      return this.getOrderById(id, client);
-    });
-  }
-
-  async updateOrderStatus(orderId, status) {
-    return withTransaction(async client => {
-      const { rows } = await client.query(
-        `SELECT * FROM orders WHERE id = $1 OR order_number = $1 LIMIT 1 FOR UPDATE`,
-        [orderId]
-      );
-
-      if (rows.length === 0) {
-        return null;
-      }
-
-      const order = await this.getOrderById(rows[0].id, client);
-      let stockDeducted = order.stockDeducted;
-
-      // ---------------------------------------------------------
-      // DEDUCT STOCK WHEN ACCEPTED
-      // ---------------------------------------------------------
-
-      if (status === 'accepted' && !stockDeducted) {
-        const stockResult = await this.deductStockForOrder(client, order.items);
-
-        if (!stockResult.ok) {
-          throw stockError(stockResult.error);
-        }
-
-        stockDeducted = true;
-      }
-
-      await client.query(
-        `UPDATE orders
-         SET status = $2, stock_deducted = $3, updated_at = NOW()
-         WHERE id = $1`,
-        [order.id, status, stockDeducted]
-      );
-
-      // ---------------------------------------------------------
-      // NOTIFICATIONS
-      // ---------------------------------------------------------
-
-      const statusNotifications = {
-        accepted: {
-          title: '🔥 Order Accepted!',
-          message: `Your Bhook_Lgi order ${order.orderNumber} has been accepted by the kitchen.`
-        },
-        preparing: {
-          title: '🍜 Order is Being Prepared!',
-          message: 'The kitchen is cooking your items fresh right now!'
-        },
-        ready: {
-          title: '✨ Order is Ready!',
-          message: `Your food is packed and ready to be delivered to ${order.hostel}!`
-        },
-        out_for_delivery: {
-          title: '🛵 Out for Delivery!',
-          message: `Delivery partner is heading to ${order.hostel}, Room ${order.roomNumber}.`
-        },
-        delivered: {
-          title: '🎉 Order Delivered!',
-          message: 'Enjoy your meal! Cravings sorted by Bhook_Lgi.'
-        },
-        cancelled: {
-          title: '❌ Order Cancelled',
-          message: `Order ${order.orderNumber} was cancelled. Contact kitchen if this was a mistake.`
-        }
-      };
-
-      if (statusNotifications[status]) {
-        await this.createNotification(
-          {
-            orderId: order.id,
-            title: statusNotifications[status].title,
-            message: statusNotifications[status].message,
-            type: 'order_status'
-          },
-          client
-        );
-      }
-
-<<<<<<< HEAD
       order.stockDeducted = true;
     }
 
@@ -1351,10 +1622,6 @@ if (product.isActive === undefined) {
     this.persist();
 
     return order;
-=======
-      return this.getOrderById(order.id, client);
-    });
->>>>>>> main
   }
 
   // =========================================================
@@ -1612,15 +1879,42 @@ if (product.isActive === undefined) {
   // NOTIFICATIONS
   // =========================================================
 
-  async getNotifications() {
-    const { rows } = await pool.query(
-      'SELECT * FROM notifications ORDER BY created_at DESC'
+  getNotifications() {
+    return [
+      ...this.data.notifications
+    ].sort(
+      (a, b) =>
+        new Date(b.createdAt) -
+        new Date(a.createdAt)
     );
-
-    return rows.map(toNotification);
   }
 
-<<<<<<< HEAD
+  createNotification(
+    notifData
+  ) {
+    const notif = {
+      id:
+        `notif-${Date.now()}-${Math.random()
+          .toString(36)
+          .substr(2, 4)}`,
+
+      isRead: false,
+
+      createdAt:
+        new Date().toISOString(),
+
+      ...notifData
+    };
+
+    this.data.notifications.unshift(
+      notif
+    );
+
+    this.persist();
+
+    return notif;
+  }
+
   // Notifications belonging to one signed-in customer
   getNotificationsForUser(userId) {
     return this.getNotifications().filter(
@@ -1659,38 +1953,10 @@ if (product.isActive === undefined) {
           notification.isRead = true;
         }
       }
-=======
-  async createNotification(notifData, db = pool) {
-    const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-    const { rows } = await db.query(
-      `INSERT INTO notifications (id, order_id, title, message, type)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [
-        id,
-        notifData.orderId || null,
-        notifData.title,
-        notifData.message,
-        notifData.type || 'order_status'
-      ]
->>>>>>> main
     );
 
-    return toNotification(rows[0]);
-  }
+    this.persist();
 
-  async markNotificationAsRead(id) {
-    const { rows } = await pool.query(
-      'UPDATE notifications SET is_read = TRUE WHERE id = $1 RETURNING *',
-      [id]
-    );
-
-    return rows[0] ? toNotification(rows[0]) : null;
-  }
-
-  async markAllNotificationsAsRead() {
-    await pool.query('UPDATE notifications SET is_read = TRUE WHERE is_read = FALSE');
     return true;
   }
 
@@ -1708,18 +1974,10 @@ getSellerByStoreId(storeId) {
   // CATEGORIES
   // =========================================================
 
-  async getCategories() {
-    const { rows } = await pool.query(
-      'SELECT id, name, slug, icon FROM categories ORDER BY sort_order, id'
-    );
-
-    return rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      icon: row.icon
-    }));
+  getCategories() {
+    return this.data.categories;
   }
 }
 
-export const store = new DataStore();
+export const store =
+  new DataStore();
