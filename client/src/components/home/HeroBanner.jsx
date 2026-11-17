@@ -6,6 +6,7 @@ import {
   Zap,
   ArrowUpRight,
 } from 'lucide-react';
+import { api, resolveMediaUrl } from '../../services/api';
 
 const DEFAULT_SLIDES = [
   {
@@ -55,21 +56,23 @@ export default function HeroBanner({ onExploreZuxu }) {
     (slide) => slide.enabled !== false
   );
 
-  // Load slides saved by admin.
+  // Load the banners the admin published (same for every customer).
   useEffect(() => {
-    const saved = localStorage.getItem('bhook_home_slides');
+    let cancelled = false;
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSlides(parsed);
+    api.getBanners()
+      .then((res) => {
+        if (!cancelled && Array.isArray(res.data) && res.data.length > 0) {
+          setSlides(res.data);
         }
-      } catch (error) {
-        console.error('Could not load homepage slides:', error);
-      }
-    }
+      })
+      .catch((error) => {
+        console.warn('Could not load homepage banners:', error.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Automatically change slide every four seconds.
@@ -118,7 +121,11 @@ export default function HeroBanner({ onExploreZuxu }) {
 
   if (!visibleSlides.length) return null;
 
-  const slide = visibleSlides[activeIndex];
+  const slide = visibleSlides[activeIndex] || visibleSlides[0];
+
+  // A photo the admin uploaded is shown as a full-width banner.
+  const isPhotoBanner = String(slide.image || '').startsWith('/api/uploads/');
+  const lightText = isPhotoBanner || slide.id === 'advertisement';
 
   // Handle slide button clicks.
   const handleSlideClick = () => {
@@ -133,7 +140,8 @@ export default function HeroBanner({ onExploreZuxu }) {
     if (
       slideId === 'zuxu' ||
       title === 'zuxu' ||
-      buttonText.includes('explore zuxu')
+      buttonText.includes('explore zuxu') ||
+      slide.link === '/zuxu'
     ) {
       if (typeof onExploreZuxu === 'function') {
         onExploreZuxu();
@@ -159,10 +167,14 @@ export default function HeroBanner({ onExploreZuxu }) {
     }
 
     // Open custom links for other slides.
+    // (The server only allows "/..." app paths and https:// links.)
     if (slide.link) {
       if (slide.link.startsWith('/')) {
-        window.location.href = slide.link;
-      } else {
+        // "/menu" and "/" are this page already.
+        if (slide.link !== '/menu' && slide.link !== '/') {
+          window.location.href = slide.link;
+        }
+      } else if (slide.link.startsWith('https://')) {
         window.open(
           slide.link,
           '_blank',
@@ -183,22 +195,39 @@ export default function HeroBanner({ onExploreZuxu }) {
           slide.background || 'from-[#FFB800] to-[#F59E0B]'
         } text-black transition-all duration-500`}
       >
-        {/* Background decorative circles */}
-        <div className="pointer-events-none absolute -right-12 -top-16 h-64 w-64 rounded-full bg-white/15 blur-2xl" />
+        {/* Admin-uploaded banner photo fills the whole banner */}
+        {isPhotoBanner && (
+          <>
+            <img
+              src={resolveMediaUrl(slide.image)}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/40 to-transparent" />
+          </>
+        )}
 
-        <div className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-black/5 blur-2xl" />
+        {/* Background decorative circles */}
+        {!isPhotoBanner && (
+          <>
+            <div className="pointer-events-none absolute -right-12 -top-16 h-64 w-64 rounded-full bg-white/15 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-black/5 blur-2xl" />
+          </>
+        )}
 
         <div className="relative z-10 flex min-h-[230px] items-center justify-between gap-4 px-6 py-7 sm:min-h-[270px] sm:px-10">
           {/* Slide content */}
-          <div className="max-w-[68%]">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-black px-3 py-1.5 text-[10px] font-black tracking-wider text-[#FFB800] sm:text-xs">
-              <Zap size={13} fill="currentColor" />
-              {slide.badge}
-            </div>
+          <div className={isPhotoBanner ? 'max-w-[85%]' : 'max-w-[68%]'}>
+            {slide.badge && (
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-black px-3 py-1.5 text-[10px] font-black tracking-wider text-[#FFB800] sm:text-xs">
+                <Zap size={13} fill="currentColor" />
+                {slide.badge}
+              </div>
+            )}
 
             <h2
               className={`text-3xl font-black leading-tight sm:text-5xl ${
-                slide.id === 'advertisement'
+                lightText
                   ? 'text-white'
                   : 'text-black'
               }`}
@@ -208,7 +237,7 @@ export default function HeroBanner({ onExploreZuxu }) {
 
             <p
               className={`mt-2 max-w-sm text-sm font-semibold sm:text-base ${
-                slide.id === 'advertisement'
+                lightText
                   ? 'text-white/80'
                   : 'text-black/75'
               }`}
@@ -217,25 +246,28 @@ export default function HeroBanner({ onExploreZuxu }) {
             </p>
 
             {/* Main action button */}
-            <button
-              type="button"
-              onClick={handleSlideClick}
-              className={`mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black shadow-md transition hover:scale-105 sm:text-sm ${
-                slide.id === 'advertisement'
-                  ? 'bg-[#FFB800] text-black'
-                  : 'bg-black text-white'
-              }`}
-            >
-              {slide.buttonText}
-              <ArrowUpRight size={15} />
-            </button>
+            {slide.buttonText && (
+              <button
+                type="button"
+                onClick={handleSlideClick}
+                className={`mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black shadow-md transition hover:scale-105 sm:text-sm ${
+                  lightText
+                    ? 'bg-[#FFB800] text-black'
+                    : 'bg-black text-white'
+                }`}
+              >
+                {slide.buttonText}
+                <ArrowUpRight size={15} />
+              </button>
+            )}
           </div>
 
           {/* Slide image or emoji */}
+          {!isPhotoBanner && (
           <div className="flex w-[32%] items-center justify-center">
             {slide.image ? (
               <img
-                src={slide.image}
+                src={resolveMediaUrl(slide.image)}
                 alt={slide.title}
                 className="max-h-32 max-w-full rounded-2xl object-contain drop-shadow-xl sm:max-h-48"
                 onError={(event) => {
@@ -248,6 +280,7 @@ export default function HeroBanner({ onExploreZuxu }) {
               </span>
             )}
           </div>
+          )}
         </div>
 
         {/* Navigation arrows and dots */}

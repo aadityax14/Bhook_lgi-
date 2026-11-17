@@ -7,6 +7,11 @@ import notificationsRouter from './routes/notifications.js';
 import authRouter from './routes/auth.js';
 import { initDatabase } from './db/migrate.js';
 import staffRouter from './routes/staff.js';
+import { ensureStaffSchema, ensureUserProfileSchema } from './db/staffSchema.js';
+import zuxuRouter from './routes/zuxu.js';
+import bannersRouter from './routes/banners.js';
+import settingsRouter from './routes/settings.js';
+import { UPLOAD_DIR } from './services/uploads.js';
 
 dotenv.config();
 
@@ -19,7 +24,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({
+  extended: true,
+  limit: '1mb'
+}));
 
 // Request logger
 app.use((req, res, next) => {
@@ -44,6 +53,22 @@ app.use('/api/categories', (req, res) => res.redirect('/api/products/categories'
 app.use('/api/orders', ordersRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/zuxu', zuxuRouter);
+app.use('/api/banners', bannersRouter);
+app.use('/api/settings', settingsRouter);
+
+// Uploaded photos (custom orders, reviews, banners).
+// Served as plain images only — never run or sniffed as anything else.
+app.use('/api/uploads', express.static(UPLOAD_DIR, {
+  index: false,
+  dotfiles: 'deny',
+  maxAge: '7d',
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'");
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
 
 // 404 handler
 app.use((req, res) => {
@@ -70,4 +95,15 @@ app.listen(PORT, () => {
   console.log(`  🌙 Products: http://localhost:${PORT}/api/products`);
   console.log(`  📦 Orders: http://localhost:${PORT}/api/orders`);
   console.log(`===========================================`);
+
+  await testDatabaseConnection();
+
+  // Staff logins + duty tables (safe to run every start)
+  try {
+    await ensureStaffSchema();
+    await ensureUserProfileSchema();
+    console.log('✅ Staff tables ready');
+  } catch (error) {
+    console.error('❌ Could not prepare staff tables:', error.message);
+  }
 });

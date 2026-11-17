@@ -3,7 +3,7 @@ import { MapPin, ChevronRight } from 'lucide-react';
 import { useOrder } from '../../context/OrderContext';
 
 export default function OrdersListPage({ onSelectOrder, onStartNewOrder }) {
-  const { orders } = useOrder();
+  const { myOrders: orders } = useOrder();
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -15,6 +15,8 @@ export default function OrdersListPage({ onSelectOrder, onStartNewOrder }) {
         return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-yellow-100 text-yellow-800 border border-yellow-300 animate-pulse">Preparing 🍜</span>;
       case 'ready':
         return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-teal-100 text-teal-800">Ready 🥡</span>;
+      case 'ready_to_dispatch':
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-pink-100 text-pink-700">Ready to Dispatch 📦</span>;
       case 'out_for_delivery':
         return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 animate-bounce">Out for Delivery 🛵</span>;
       case 'delivered':
@@ -79,6 +81,11 @@ export default function OrdersListPage({ onSelectOrder, onStartNewOrder }) {
                     <span className="font-black text-sm text-brand-black group-hover:text-brand-yellowHover transition-colors">
                       {ord.orderNumber}
                     </span>
+                    {ord.orderType === 'zuxu' && (
+                      <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black bg-pink-50 text-pink-600 border border-pink-100">
+                        ZUXU{ord.isCustom ? ' · CUSTOM' : ''}
+                      </span>
+                    )}
                     <span className="text-[11px] text-gray-400 ml-2">{dateStr}</span>
                   </div>
                   <div>{getStatusBadge(ord.status)}</div>

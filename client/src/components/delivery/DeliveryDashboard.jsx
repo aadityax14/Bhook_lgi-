@@ -1,5 +1,6 @@
 
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { api } from '../../services/api';
 import {
   Bike,
   LogOut,
@@ -39,19 +40,41 @@ export default function DeliveryDashboard({
    */
 
   // Orders waiting for delivery partner
+  // Food that's ready + Zuxu orders ready to dispatch
   const readyOrders = orders.filter(
-    (order) => order.status === 'ready'
+    (order) => order.status === 'ready' || order.status === 'ready_to_dispatch'
   );
 
-  // Orders currently being delivered
+  const myId = deliveryPartner?.id;
+  const isMine = (order) => !order.deliveryPartnerId || String(order.deliveryPartnerId) === String(myId);
+
+  // Orders currently being delivered (by me, or picked up by admin)
   const outForDeliveryOrders = orders.filter(
-    (order) => order.status === 'out_for_delivery'
+    (order) => order.status === 'out_for_delivery' && isMine(order)
   );
 
-  // Completed deliveries
+  // Completed deliveries — only the ones I delivered
   const deliveredOrders = orders.filter(
-    (order) => order.status === 'delivered'
+    (order) => order.status === 'delivered' && String(order.deliveredBy || '') === String(myId)
   );
+
+  // My earnings (delivery charge of each order I delivered)
+  const [earnings, setEarnings] = useState(null);
+
+  const loadEarnings = useCallback(async () => {
+    try {
+      const res = await api.getMyEarnings();
+      setEarnings(res.data);
+    } catch {
+      // Earnings are informational
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEarnings();
+    const interval = setInterval(loadEarnings, 30000);
+    return () => clearInterval(interval);
+  }, [loadEarnings]);
 
   // Main active orders
   const activeDeliveryOrders = [
@@ -69,6 +92,7 @@ export default function DeliveryDashboard({
       // Refresh so the order immediately moves
       // between Active and Completed sections.
       await fetchOrders();
+      await loadEarnings();
 
     } catch (error) {
       console.error(
@@ -77,7 +101,7 @@ export default function DeliveryDashboard({
       );
 
       alert(
-        'Could not update order status. Please try again.'
+        error?.message || 'Could not update order status. Please try again.'
       );
     }
   };
@@ -176,6 +200,30 @@ export default function DeliveryDashboard({
 
           </div>
 
+        </div>
+
+
+        {/* ================= MY EARNINGS ================= */}
+
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-6">
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-400">My earnings</p>
+          <div className="mt-2 grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-3xl font-black text-emerald-600">₹{earnings?.todayEarnings ?? 0}</p>
+              <p className="text-xs text-gray-500">
+                Today · {earnings?.todayDeliveries ?? 0} deliver{(earnings?.todayDeliveries ?? 0) === 1 ? 'y' : 'ies'}
+              </p>
+            </div>
+            <div>
+              <p className="text-3xl font-black text-brand-black">₹{earnings?.totalEarnings ?? 0}</p>
+              <p className="text-xs text-gray-500">
+                All time · {earnings?.totalDeliveries ?? 0} deliveries
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-gray-500">
+            You earn the delivery charge of every order you deliver yourself.
+          </p>
         </div>
 
 
@@ -315,7 +363,7 @@ export default function DeliveryDashboard({
                     ...order,
 
                     status:
-                      order.status === 'ready'
+                      order.status === 'ready' || order.status === 'ready_to_dispatch'
                         ? 'Ready for Pickup'
                         : order.status === 'out_for_delivery'
                         ? 'On the Way'

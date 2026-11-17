@@ -1,15 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../services/api';
+import { useAuth } from './AuthContext';
 
 const NotificationContext = createContext();
 
 export function NotificationProvider({ children }) {
+  const { isAuthenticated, user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestToast, setLatestToast] = useState(null);
   const knownIdsRef = useRef(new Set());
 
   const fetchNotifications = useCallback(async () => {
+    // Notifications are personal: only fetch for a signed-in customer.
+    if (!isAuthenticated) return;
+
     try {
       const res = await api.getNotifications();
       if (res && res.data) {
@@ -29,13 +34,21 @@ export function NotificationProvider({ children }) {
     } catch {
       // Graceful offline fallback
     }
-  }, []);
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
+    // Reset whenever the signed-in user changes (login / logout).
+    setNotifications([]);
+    setUnreadCount(0);
+    setLatestToast(null);
+    knownIdsRef.current = new Set();
+
+    if (!isAuthenticated) return;
+
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 4000);
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, isAuthenticated]);
 
   const markAsRead = async (id) => {
     try {

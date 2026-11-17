@@ -1,17 +1,48 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Uploaded photos are saved by the server as "/api/uploads/<file>".
+// Turn that into a full URL on the API's host.
+const API_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE, window.location.href).origin;
+  } catch {
+    return '';
+  }
+})();
+
+export function resolveMediaUrl(url) {
+  if (typeof url !== 'string' || !url) return '';
+  if (url.startsWith('/api/uploads/')) return `${API_ORIGIN}${url}`;
+  return url;
+}
+
 async function fetchJSON(endpoint, options = {}) {
   try {
+    // Attach the signed-in customer's token (if any) so the server
+    // can return only their orders / notifications.
+    let savedToken = null;
+    try {
+      savedToken = localStorage.getItem('bhook_token');
+    } catch {
+      savedToken = null;
+    }
+
     const res = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(savedToken ? { Authorization: `Bearer ${savedToken}` } : {}),
         ...options.headers,
       },
-      ...options,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Network response was not ok' }));
-      throw new Error(err.error || `HTTP error! status: ${res.status}`);
+      const body = await res.json().catch(() => ({ error: 'Network response was not ok' }));
+      const error = new Error(body.error || `HTTP error! status: ${res.status}`);
+      // Keep extra details (e.g. code: 'PRICE_CHANGED' + latest prices)
+      error.status = res.status;
+      error.code = body.code;
+      error.data = body.data;
+      throw error;
     }
     return await res.json();
   } catch (err) {
@@ -50,7 +81,18 @@ export const api = {
 
   // Orders
   getOrders: () => fetchJSON('/orders'),
-  
+
+  // Only the signed-in customer's own orders
+  getMyOrders: () => fetchJSON('/orders/my'),
+
+  // Admin: delete one order / clear history ('finished' or 'all')
+  deleteOrder: (id) => fetchJSON(`/orders/${id}`, { method: 'DELETE' }),
+  clearOrderHistory: (scope) =>
+    fetchJSON('/orders/clear-history', {
+      method: 'POST',
+      body: JSON.stringify({ scope }),
+    }),
+
   getOrderById: (id) => fetchJSON(`/orders/${id}`),
 
   getUserOrders: (phone) => fetchJSON(`/orders/user/${phone}`),
@@ -93,59 +135,136 @@ export const api = {
       body: JSON.stringify(accountData),
     }),
 
-  getCurrentUser: (token) =>
-    fetchJSON('/auth/me', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+  // Uses the saved token automatically.
+  getCurrentUser: () => fetchJSON('/auth/me'),
+
+  // Customer profile: { name, phone, email, hostel, roomNumber,
+  // deliveryNote, currentPassword (needed for phone/email changes) }
+  updateProfile: (fields) =>
+    fetchJSON('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(fields),
+    }),
+
+  changePassword: (currentPassword, newPassword) =>
+    fetchJSON('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
     }),
 
   // Health
   checkHealth: () => fetchJSON('/health'),
 
-  
-  // Staff Applications
-  submitStaffApplication: (applicationData) =>
-    fetchJSON('/staff/applications', {
+  // Zuxu custom orders (photo + description → admin quote)
+  createCustomRequest: (description, images) =>
+    fetchJSON('/zuxu/custom-requests', {
       method: 'POST',
-      body: JSON.stringify(applicationData),
+      body: JSON.stringify({ description, images }),
+    }),
+  getMyCustomRequests: () => fetchJSON('/zuxu/custom-requests/mine'),
+  confirmCustomRequest: (id) =>
+    fetchJSON(`/zuxu/custom-requests/${id}/confirm`, { method: 'POST' }),
+  declineCustomRequest: (id) =>
+    fetchJSON(`/zuxu/custom-requests/${id}/decline`, { method: 'POST' }),
+
+  // Admin
+  getAllCustomRequests: () => fetchJSON('/zuxu/custom-requests'),
+  quoteCustomRequest: (id, price, estimatedDeliveryDate, note) =>
+    fetchJSON(`/zuxu/custom-requests/${id}/quote`, {
+      method: 'PATCH',
+      body: JSON.stringify({ price, estimatedDeliveryDate, note }),
+    }),
+  rejectCustomRequest: (id, note) =>
+    fetchJSON(`/zuxu/custom-requests/${id}/reject`, {
+      method: 'PATCH',
+      body: JSON.stringify({ note }),
     }),
 
-    
-submitStaffApplication: (application) =>
-  fetchJSON('/staff/applications', {
-    method: 'POST',
-    body: JSON.stringify(application),
-  }),
+  // Zuxu reviews
+  getReviewSummary: () => fetchJSON('/zuxu/reviews/summary'),
+  getProductReviews: (productId) =>
+    fetchJSON(`/zuxu/products/${encodeURIComponent(productId)}/reviews`),
+  getMyReviews: () => fetchJSON('/zuxu/reviews/mine'),
+  createReview: (review) =>
+    fetchJSON('/zuxu/reviews', {
+      method: 'POST',
+      body: JSON.stringify(review),
+    }),
+  deleteReview: (id) =>
+    fetchJSON(`/zuxu/reviews/${id}`, { method: 'DELETE' }),
 
-getStaffApplicationStatus: (mobile, studentId) => {
-  const params = new URLSearchParams({ mobile, studentId });
-  return fetchJSON(`/staff/applications/status?${params.toString()}`);
-},
+  // Delivery & packing charges
+  getSettings: () => fetchJSON('/settings'),
+  saveSettings: (settings) =>
+    fetchJSON('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
 
-staffAdminLogin: (credentials) =>
-  fetchJSON('/staff/admin/login', {
-    method: 'POST',
-    body: JSON.stringify(credentials),
-  }),
+  // Delivery partner earnings / staff hostel
+  getMyEarnings: () => fetchJSON('/staff/me/earnings'),
+  setStaffHostel: (id, hostel) =>
+    fetchJSON(`/staff/accounts/${id}/hostel`, {
+      method: 'PATCH',
+      body: JSON.stringify({ hostel }),
+    }),
 
-getStaffApplications: (token) =>
-  fetchJSON('/staff/applications', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }),
+  // Homepage banners
+  getBanners: () => fetchJSON('/banners'),
+  saveBanners: (slides) =>
+    fetchJSON('/banners', {
+      method: 'PUT',
+      body: JSON.stringify({ slides }),
+    }),
+  resetBanners: () => fetchJSON('/banners', { method: 'DELETE' }),
+  uploadBannerImage: (image) =>
+    fetchJSON('/banners/upload', {
+      method: 'POST',
+      body: JSON.stringify({ image }),
+    }),
 
-decideStaffApplication: (id, decision, token) =>
-  fetchJSON(`/staff/applications/${id}/decision`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ decision }),
-  }),
+  // Staff applications (public)
+  submitStaffApplication: (application) =>
+    fetchJSON('/staff/applications', {
+      method: 'POST',
+      body: JSON.stringify(application),
+    }),
 
+  getStaffApplicationStatus: (mobile, studentId) => {
+    const params = new URLSearchParams({ mobile, studentId });
+    return fetchJSON(`/staff/applications/status?${params.toString()}`);
+  },
 
+  // Staff: am I on duty today?
+  getMyDuty: () => fetchJSON('/staff/me/duty'),
+
+  // Staff management (admin only — checked on the server)
+  getStaffApplications: () => fetchJSON('/staff/applications'),
+
+  decideStaffApplication: (id, decision) =>
+    fetchJSON(`/staff/applications/${id}/decision`, {
+      method: 'PATCH',
+      body: JSON.stringify({ decision }),
+    }),
+
+  getStaffAccounts: () => fetchJSON('/staff/accounts'),
+
+  resetStaffPassword: (id) =>
+    fetchJSON(`/staff/accounts/${id}/reset-password`, {
+      method: 'POST',
+    }),
+
+  setStaffActive: (id, isActive) =>
+    fetchJSON(`/staff/accounts/${id}/active`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    }),
+
+  setTodayDuty: (staffIds) =>
+    fetchJSON('/staff/duty/today', {
+      method: 'PUT',
+      body: JSON.stringify({ staffIds }),
+    }),
 };
 
 

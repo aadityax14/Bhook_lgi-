@@ -1,10 +1,15 @@
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useState,
   useEffect
 } from 'react';
+import { api } from '../services/api';
+import { useAuth } from './AuthContext';
+import { computeFees, DEFAULT_FEE_SETTINGS } from '../utils/fees';
+import { isAvailableInHostel } from '../utils/availability';
 
 const CartContext = createContext();
 
@@ -36,6 +41,26 @@ export function CartProvider({ children }) {
 
   const [toastMessage, setToastMessage] = useState(null);
 
+  const { user } = useAuth();
+  const [feeSettings, setFeeSettings] = useState(DEFAULT_FEE_SETTINGS);
+
+  // Charges + which hostels have a chef on duty today (refreshed
+  // every minute, and again if the server says prices changed).
+  const refreshFeeSettings = useCallback(async () => {
+    try {
+      const res = await api.getSettings();
+      if (res?.data) setFeeSettings({ ...DEFAULT_FEE_SETTINGS, ...res.data });
+    } catch {
+      // Keep the last known charges
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshFeeSettings();
+    const interval = setInterval(refreshFeeSettings, 60000);
+    return () => clearInterval(interval);
+  }, [refreshFeeSettings]);
+
   useEffect(() => {
     try {
       localStorage.setItem('bhook_cart', JSON.stringify(items));
@@ -58,6 +83,12 @@ export function CartProvider({ children }) {
   const addToCart = (product, options = {}) => {
     if (!product?.id) {
       showToast('Invalid product!');
+      return;
+    }
+
+    // Item only sold in some hostels (set by the admin)
+    if (!isAvailableInHostel(product, user?.hostel)) {
+      showToast(`${product.name} is not available in ${user?.hostel || 'your hostel'}.`);
       return;
     }
 
@@ -222,6 +253,35 @@ export function CartProvider({ children }) {
     setItems([]);
   };
 
+  // APPLY SERVER PRICES
+  // The server sends back the latest admin prices (same order as the
+  // cart items it received) when a price changed before checkout.
+  const applyServerPrices = (pricedItems) => {
+    if (!Array.isArray(pricedItems)) return;
+
+    setItems(prevItems =>
+      prevItems.map((item, index) => {
+        const priced = pricedItems[index];
+
+        if (!priced || priced.productId !== item.productId) {
+          return item;
+        }
+
+        const unitPrice = Number(priced.priceAtOrder) || 0;
+
+        return {
+          ...item,
+          unitPrice,
+          itemTotal: unitPrice * item.quantity,
+          addons: Array.isArray(priced.addons) ? priced.addons : item.addons,
+          variant: item.variant
+            ? { ...item.variant, price: unitPrice - (priced.addons || []).reduce((s, a) => s + Number(a.price || 0), 0) }
+            : item.variant
+        };
+      })
+    );
+  };
+
   // CART CALCULATIONS
   const itemsCount = items.reduce(
     (sum, item) => sum + item.quantity,
@@ -233,15 +293,18 @@ export function CartProvider({ children }) {
     0
   );
 
-  // Existing Bhook_Lgi fee logic preserved
-  const deliveryFee =
-    subtotal === 0 ? 0 : subtotal >= 120 ? 0 : 10;
+  // Delivery & packing charges set by the admin; delivery depends on
+  // whether a chef on duty today is in the customer's hostel.
+  const orderType =
+    items.length > 0 && items.every(item => item.productType === 'zuxu') ? 'zuxu' : 'food';
 
-  const packagingFee =
-    subtotal === 0 ? 0 : 5;
-
-  const total =
-    subtotal + deliveryFee + packagingFee;
+  const { deliveryFee, packagingFee, total, sameHostel } = computeFees({
+    settings: feeSettings,
+    subtotal,
+    hostel: user?.hostel,
+    deliveryType: 'room_delivery',
+    orderType
+  });
 
   return (
     <CartContext.Provider
@@ -251,12 +314,18 @@ export function CartProvider({ children }) {
         updateQuantity,
         removeItem,
         clearCart,
+        applyServerPrices,
 
         itemsCount,
         subtotal,
         deliveryFee,
         packagingFee,
         total,
+        sameHostel,
+        orderType,
+
+        feeSettings,
+        refreshFeeSettings,
 
         toastMessage
       }}

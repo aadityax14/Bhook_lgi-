@@ -9,7 +9,7 @@ import HeroBanner from './components/home/HeroBanner';
 import CategoryTabs from './components/home/CategoryTabs';
 import SearchBar from './components/home/SearchBar';
 import ProductCard from './components/product/ProductCard';
-import CustomizationModal from './components/product/CustomizationModal';
+import ProductDetailsPage from './components/product/ProductDetailsPage';
 import CartDrawer from './components/cart/CartDrawer';
 import CheckoutModal from './components/checkout/CheckoutModal';
 import OrderConfirmationModal from './components/tracking/OrderConfirmationModal';
@@ -17,11 +17,12 @@ import OrderTrackingView from './components/tracking/OrderTrackingView';
 import OrdersListPage from './components/orders/OrdersListPage';
 import NotificationModal from './components/notifications/NotificationModal';
 import AdminDashboard from './components/admin/AdminDashboard';
-import AdminLogin from './components/admin/AdminLogin';
-import DeliveryLogin from './components/delivery/DeliveryLogin';
 import DeliveryDashboard from './components/delivery/DeliveryDashboard';
 import ZuxuStore from './components/zuxu/ZuxuStore';
 import ChefDashboard from './components/chef/ChefDashboard';
+import StaffGate from './components/staff/StaffGate';
+import WorkWithBhookLgi from './components/work/WorkWithBhookLgi';
+import ProfilePage from './components/profile/ProfilePage';
 
 import { useCart } from './context/CartContext';
 import { useOrder } from './context/OrderContext';
@@ -30,9 +31,6 @@ import { api } from './services/api';
 import { FALLBACK_PRODUCTS } from './data/fallbackProducts';
 
 export default function App() {
-  const [isDeliveryView, setIsDeliveryView] = useState(false);
-  const [deliveryPartner, setDeliveryPartner] = useState(null);
-
   const [showWorkWithBhookLgi, setShowWorkWithBhookLgi] = useState(false);
 
   // Splash screen state
@@ -58,15 +56,18 @@ export default function App() {
   const [confirmedOrder, setConfirmedOrder] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-  // Staff and navigation states
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [isChefView, setIsChefView] = useState(false);
+  // Navigation states
   const [isZuxuView, setIsZuxuView] = useState(false);
 
   const { addToCart } = useCart();
   const { setActiveOrderId } = useOrder();
 
+  // The view is chosen from the signed-in account's role, which the
+  // server confirms (see AuthContext). No hidden shortcuts.
   const {
+    user,
+    role,
+    logout,
     isAdminView,
     setIsAdminView,
     isMobileFrame
@@ -85,24 +86,6 @@ export default function App() {
 
     return category === 'zuxu';
   };
-
-  // ==========================================================
-  // ADMIN SHORTCUT
-  // ==========================================================
-
-  useEffect(() => {
-    const handleAdminShortcut = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-        setShowAdminLogin(true);
-      }
-    };
-
-    window.addEventListener('keydown', handleAdminShortcut);
-
-    return () => {
-      window.removeEventListener('keydown', handleAdminShortcut);
-    };
-  }, []);
 
   // ==========================================================
   // FETCH BHOO​​K_LGI PRODUCTS
@@ -208,8 +191,6 @@ export default function App() {
 
   const handleExploreZuxu = () => {
     setIsAdminView(false);
-    setIsChefView(false);
-    setIsDeliveryView(false);
     setIsZuxuView(true);
     setIsCartOpen(false);
     setIsCheckoutOpen(false);
@@ -250,9 +231,19 @@ export default function App() {
   // ORDER TRACKING
   // ==========================================================
 
+  // Open the tracking screen from anywhere — including the Zuxu
+  // store or Admin view, which would otherwise stay on top.
+  const openOrderTracking = (orderId) => {
+    if (orderId) setActiveOrderId(orderId);
+    setIsZuxuView(false);
+    setIsAdminView(false);
+    setActiveTab('orders');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleTrackConfirmedOrder = () => {
     setConfirmedOrder(null);
-    setActiveTab('orders');
+    openOrderTracking();
   };
 
   // ==========================================================
@@ -261,56 +252,12 @@ export default function App() {
 
   const renderContent = () => {
 
-    // ADMIN LOGIN
-    if (showAdminLogin) {
-      return (
-        <AdminLogin
-          onLogin={() => {
-            setShowAdminLogin(false);
-            setIsAdminView(true);
-          }}
-          onBack={() => setShowAdminLogin(false)}
-        />
-      );
-    }
-
-    // ADMIN DASHBOARD
+    // ADMIN DASHBOARD (only ever true for an admin account)
     if (isAdminView) {
       return (
         <AdminDashboard
           onSwitchToCustomer={() => setIsAdminView(false)}
         />
-      );
-    }
-
-    // DELIVERY LOGIN
-    if (isDeliveryView && !deliveryPartner) {
-      return (
-        <DeliveryLogin
-          onLogin={(partner) => {
-            setDeliveryPartner(partner);
-          }}
-        />
-      );
-    }
-
-    // DELIVERY DASHBOARD
-    if (isDeliveryView && deliveryPartner) {
-      return (
-        <DeliveryDashboard
-          deliveryPartner={deliveryPartner}
-          onLogout={() => {
-            setDeliveryPartner(null);
-            setIsDeliveryView(false);
-          }}
-        />
-      );
-    }
-
-    // CHEF DASHBOARD
-    if (isChefView) {
-      return (
-        <ChefDashboard />
       );
     }
 
@@ -322,6 +269,18 @@ export default function App() {
       return (
         <ZuxuStore
           onBack={handleBackFromZuxu}
+        />
+      );
+    }
+
+    // MY PROFILE
+    if (activeTab === 'profile') {
+      return (
+        <ProfilePage
+          onBack={() => setActiveTab('home')}
+          onOpenOrders={() => setActiveTab('all-orders')}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
+          onWorkWithUs={() => setShowWorkWithBhookLgi(true)}
         />
       );
     }
@@ -463,10 +422,10 @@ export default function App() {
   };
 
   // ==========================================================
-  // MAIN APP RETURN
+  // CUSTOMER APP (also what off-duty chefs / delivery partners see)
   // ==========================================================
 
-  return (
+  const customerApp = (
     <>
 
       {/* SPLASH SCREEN */}
@@ -528,6 +487,12 @@ export default function App() {
               setSearchQuery('');
             }}
 
+            onOpenProfile={() => {
+              setIsAdminView(false);
+              setIsZuxuView(false);
+              setActiveTab('profile');
+            }}
+
             onWorkWithBhookLgi={() => {
               setShowWorkWithBhookLgi(true);
             }}
@@ -535,10 +500,7 @@ export default function App() {
 
           {/* TOAST */}
           <Toast
-            onOpenOrders={() => {
-              setIsAdminView(false);
-              setActiveTab('orders');
-            }}
+            onOpenOrders={() => openOrderTracking()}
             onOpenNotifications={() => {
               setIsNotificationsOpen(true);
             }}
@@ -567,47 +529,22 @@ export default function App() {
         ==================================================== */}
 
         {/* PRODUCT CUSTOMIZATION */}
-        <CustomizationModal
-          product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
-        />
+        {/* Full product page (photos, options, add to cart, reviews).
+            key = product id so options reset for each product. */}
+        {selectedProduct && (
+          <ProductDetailsPage
+            key={selectedProduct.id}
+            product={selectedProduct}
+            onClose={() => setSelectedProduct(null)}
+            onOpenCart={() => setIsCartOpen(true)}
+          />
+        )}
 
         {/* WORK WITH BHOOK_LGI */}
         {showWorkWithBhookLgi && (
-
-          <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-
-            <div className="w-full max-w-sm rounded-3xl bg-brand-cream p-6 text-center shadow-2xl">
-
-              <div className="text-5xl mb-4">
-                🚀
-              </div>
-
-              <h2 className="text-2xl font-black text-brand-black">
-                Coming Soon!
-              </h2>
-
-              <p className="mt-3 text-sm text-gray-600">
-                We're working on something exciting.
-                Staff applications for Bhook_Lgi will open soon.
-              </p>
-
-              <div className="mt-5 rounded-xl bg-brand-yellow/30 p-3">
-                <p className="font-bold text-sm">
-                  Earn. Learn. Grow.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowWorkWithBhookLgi(false)}
-                className="mt-5 w-full rounded-xl bg-brand-black py-3 font-black text-brand-yellow"
-              >
-                Okay
-              </button>
-
-            </div>
-
-          </div>
+          <WorkWithBhookLgi
+            onClose={() => setShowWorkWithBhookLgi(false)}
+          />
         )}
 
         {/* CART DRAWER */}
@@ -635,14 +572,36 @@ export default function App() {
         <NotificationModal
           isOpen={isNotificationsOpen}
           onClose={() => setIsNotificationsOpen(false)}
-          onTrackOrder={(orderId) => {
-            setActiveOrderId(orderId);
-            setActiveTab('orders');
-          }}
+          onTrackOrder={(orderId) => openOrderTracking(orderId)}
         />
 
       </div>
 
     </>
   );
+
+  // ==========================================================
+  // STAFF: their panel when on duty, the customer app when off duty
+  // ==========================================================
+
+  if (role === 'CHEF') {
+    return (
+      <StaffGate showTopBar offDuty={customerApp}>
+        <ChefDashboard />
+      </StaffGate>
+    );
+  }
+
+  if (role === 'DELIVERY') {
+    return (
+      <StaffGate offDuty={customerApp}>
+        <DeliveryDashboard
+          deliveryPartner={{ id: user?.id, deliveryId: user?.loginId, name: user?.name }}
+          onLogout={logout}
+        />
+      </StaffGate>
+    );
+  }
+
+  return customerApp;
 }

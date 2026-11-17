@@ -1,4 +1,10 @@
 import BannerManager from './BannerManager';
+import StaffManager from './StaffManager';
+import ZuxuCustomRequests from './ZuxuCustomRequests';
+import ChargesSettings from './ChargesSettings';
+import KitchenStatusCard from './KitchenStatusCard';
+import OrderHistoryControls from './OrderHistoryControls';
+import HostelAvailabilityPicker from './HostelAvailabilityPicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -19,6 +25,12 @@ import {
 
 import { api } from '../../services/api';
 import { useOrder } from '../../context/OrderContext';
+import PriceOptionsEditor, {
+  toPriceOptionRows,
+  cleanPriceOptions,
+} from './PriceOptionsEditor';
+
+const EMPTY_PRICE_OPTIONS = { variants: [], addons: [] };
 
 
 // ============================================================
@@ -72,11 +84,14 @@ const compressImage = (file) => {
           return;
         }
 
+        // Smoother resizing = less blur
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
         const compressedImage = canvas.toDataURL(
           'image/jpeg',
-          0.75
+          0.85
         );
 
         resolve(compressedImage);
@@ -195,6 +210,8 @@ export default function AdminDashboard({
     isCooked: false,
     allowsSpiceCustomization: false,
     isAvailable: true,
+    priceOptions: EMPTY_PRICE_OPTIONS,
+    availableHostels: [],
   });
 
   const [newImageLoading, setNewImageLoading] =
@@ -215,6 +232,8 @@ export default function AdminDashboard({
     images: [],
     description: '',
     isAvailable: true,
+    priceOptions: EMPTY_PRICE_OPTIONS,
+    availableHostels: [],
   });
 
   const [editSaving, setEditSaving] =
@@ -398,7 +417,7 @@ const normalProducts = useMemo(() => {
 
 
   const readyOrders = orders.filter(
-    (order) => order.status === 'ready'
+    (order) => order.status === 'ready' || order.status === 'ready_to_dispatch'
   );
 
 
@@ -677,6 +696,8 @@ const normalProducts = useMemo(() => {
         product.description || '',
       isAvailable:
         product.isAvailable !== false,
+      priceOptions: toPriceOptionRows(product),
+      availableHostels: Array.isArray(product.availableHostels) ? product.availableHostels : [],
     });
   };
 
@@ -689,12 +710,14 @@ const normalProducts = useMemo(() => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
 
-    const isZuxu = editingProduct?.categoryId === 'zuxu';
+    // Every product (Bhook_Lgi and Zuxu) can have up to 5 photos —
+    // customers see them as a gallery on the product page.
+    const multiPhoto = true;
     const currentImages = Array.isArray(editForm.images) ? editForm.images : [];
-    const allowedFiles = isZuxu ? files.slice(0, Math.max(0, 5 - currentImages.length)) : files.slice(0, 1);
+    const allowedFiles = multiPhoto ? files.slice(0, Math.max(0, 5 - currentImages.length)) : files.slice(0, 1);
 
-    if (isZuxu && files.length > allowedFiles.length) {
-      showToast('error', 'A Zuxu product can have a maximum of 5 images');
+    if (multiPhoto && files.length > allowedFiles.length) {
+      showToast('error', 'A product can have a maximum of 5 images');
     }
 
     if (!allowedFiles.length) {
@@ -707,7 +730,7 @@ const normalProducts = useMemo(() => {
       const compressedImages = await Promise.all(allowedFiles.map(compressImage));
       setEditForm((previous) => {
         const existing = Array.isArray(previous.images) ? previous.images : [];
-        const images = isZuxu
+        const images = multiPhoto
           ? [...existing, ...compressedImages].slice(0, 5)
           : compressedImages;
         return { ...previous, images, imageUrl: images[0] || '' };
@@ -737,12 +760,13 @@ const normalProducts = useMemo(() => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
 
-    const isZuxu = newProduct.categoryId === 'zuxu';
+    // Every product can have up to 5 photos (gallery).
+    const multiPhoto = true;
     const currentImages = Array.isArray(newProduct.images) ? newProduct.images : [];
-    const allowedFiles = isZuxu ? files.slice(0, Math.max(0, 5 - currentImages.length)) : files.slice(0, 1);
+    const allowedFiles = multiPhoto ? files.slice(0, Math.max(0, 5 - currentImages.length)) : files.slice(0, 1);
 
-    if (isZuxu && files.length > allowedFiles.length) {
-      showToast('error', 'A Zuxu product can have a maximum of 5 images');
+    if (multiPhoto && files.length > allowedFiles.length) {
+      showToast('error', 'A product can have a maximum of 5 images');
     }
 
     if (!allowedFiles.length) {
@@ -755,7 +779,7 @@ const normalProducts = useMemo(() => {
       const compressedImages = await Promise.all(allowedFiles.map(compressImage));
       setNewProduct((previous) => {
         const existing = Array.isArray(previous.images) ? previous.images : [];
-        const images = isZuxu
+        const images = multiPhoto
           ? [...existing, ...compressedImages].slice(0, 5)
           : compressedImages;
         return { ...previous, images, imageUrl: images[0] || '' };
@@ -812,6 +836,17 @@ const normalProducts = useMemo(() => {
         return;
       }
 
+      // Sizes & extras (Bhook_Lgi food only; Zuxu keeps its own variants)
+      const isZuxuEdit = editingProduct.categoryId === 'zuxu';
+      const priceOptions = isZuxuEdit
+        ? null
+        : cleanPriceOptions(editForm.priceOptions || EMPTY_PRICE_OPTIONS);
+
+      if (priceOptions?.error) {
+        showToast('error', priceOptions.error);
+        return;
+      }
+
       try {
         setEditSaving(true);
 
@@ -823,13 +858,20 @@ const normalProducts = useMemo(() => {
               price,
               imageUrl:
                 editForm.images?.[0] || editForm.imageUrl,
-              images: editingProduct.categoryId === 'zuxu'
+              images: (editForm.images || []).length
                 ? (editForm.images || []).slice(0, 5)
                 : (editForm.imageUrl ? [editForm.imageUrl] : []),
               description:
                 editForm.description,
               isAvailable:
                 editForm.isAvailable,
+              ...(priceOptions
+                ? {
+                    variants: priceOptions.variants,
+                    addons: priceOptions.addons,
+                    availableHostels: editForm.availableHostels || [],
+                  }
+                : {}),
             }
           );
 
@@ -906,6 +948,16 @@ const normalProducts = useMemo(() => {
         return;
       }
 
+      const isZuxuNew = newProduct.categoryId === 'zuxu';
+      const newPriceOptions = isZuxuNew
+        ? null
+        : cleanPriceOptions(newProduct.priceOptions || EMPTY_PRICE_OPTIONS);
+
+      if (newPriceOptions?.error) {
+        showToast('error', newPriceOptions.error);
+        return;
+      }
+
       try {
         setCreatingProduct(true);
 
@@ -932,7 +984,7 @@ productType:
 
             imageUrl:
               newProduct.images?.[0] || newProduct.imageUrl || '',
-            images: newProduct.categoryId === 'zuxu'
+            images: (newProduct.images || []).length
               ? (newProduct.images || []).slice(0, 5)
               : (newProduct.imageUrl ? [newProduct.imageUrl] : []),
 
@@ -955,6 +1007,14 @@ productType:
               Boolean(
                 newProduct.isAvailable
               ),
+
+            ...(newPriceOptions
+              ? {
+                  variants: newPriceOptions.variants,
+                  addons: newPriceOptions.addons,
+                  availableHostels: newProduct.availableHostels || [],
+                }
+              : {}),
 
             // Zuxu items use normal stock. Start with 10 available
             // so a newly created item is visible in the Zuxu storefront.
@@ -986,6 +1046,8 @@ productType:
           isCooked: false,
           allowsSpiceCustomization: false,
           isAvailable: true,
+          priceOptions: EMPTY_PRICE_OPTIONS,
+          availableHostels: [],
         });
 
         setShowAddProduct(false);
@@ -1119,6 +1181,31 @@ productType:
 
 
   // ==========================================================
+  // DELETE ONE ORDER
+  // ==========================================================
+
+  const handleDeleteOrder = async (order) => {
+    const label = order.orderNumber || `#${order.id}`;
+    const inProgress = !['delivered', 'cancelled'].includes(order.status);
+
+    if (!window.confirm(
+      `Delete order ${label}?` +
+      (inProgress ? '\n\nThis order is still in progress — the customer will no longer see it.' : '')
+    )) {
+      return;
+    }
+
+    try {
+      await api.deleteOrder(order.id);
+      showToast('success', `Order ${label} deleted`);
+      await fetchOrders();
+    } catch (error) {
+      showToast('error', error.message || 'Could not delete order');
+    }
+  };
+
+
+  // ==========================================================
   // STATUS FORMAT
   // ==========================================================
 
@@ -1158,6 +1245,31 @@ productType:
           {saving
             ? 'Accepting...'
             : 'Accept Order'}
+        </button>
+      );
+    }
+
+    // Zuxu: accepted → ready to dispatch (no kitchen steps)
+    if (order.orderType === 'zuxu' && order.status === 'accepted') {
+      return (
+        <button
+          disabled={saving}
+          onClick={() => handleOrderStatusChange(order.id, 'ready_to_dispatch')}
+          className="px-4 py-2 rounded-xl bg-pink-600 text-white font-bold disabled:opacity-50"
+        >
+          {saving ? 'Updating...' : 'Mark Ready to Dispatch'}
+        </button>
+      );
+    }
+
+    if (order.status === 'ready_to_dispatch') {
+      return (
+        <button
+          disabled={saving}
+          onClick={() => handleOrderStatusChange(order.id, 'out_for_delivery')}
+          className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold disabled:opacity-50"
+        >
+          {saving ? 'Updating...' : 'Mark Out for Delivery'}
         </button>
       );
     }
@@ -1291,12 +1403,34 @@ if (order.status === 'delivered') {
                 )}
               </span>
 
+              {order.orderType === 'zuxu' && (
+                <span className="px-2.5 py-1 rounded-full bg-pink-100 text-pink-700 text-xs font-black">
+                  ZUXU{order.isCustom ? ' · CUSTOM' : ''}
+                </span>
+              )}
+
             </div>
+
+            {order.estimatedDeliveryDate && (
+              <p className="text-xs font-bold text-pink-700 mt-1">
+                Deliver by {order.estimatedDeliveryDate}
+              </p>
+            )}
 
             <p className="text-sm text-gray-500 mt-1">
               {order.customerName ||
                 'Customer'}
             </p>
+
+            {order.customerPhone && (
+              <a
+                href={`tel:${order.customerPhone}`}
+                className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-green-50 px-2.5 py-1 text-xs font-black text-green-700 hover:bg-green-100"
+                title="Call customer"
+              >
+                📞 {order.customerPhone}
+              </a>
+            )}
 
           </div>
 
@@ -1399,7 +1533,17 @@ if (order.status === 'delivered') {
 
         {/* ACTION */}
 
-        <div className="mt-5 pt-4 border-t flex justify-end">
+        <div className="mt-5 pt-4 border-t flex items-center justify-between gap-2">
+          {/* Delete this one order */}
+          <button
+            type="button"
+            onClick={() => handleDeleteOrder(order)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50"
+            title="Delete this order"
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+
           {renderOrderActions(
             order
           )}
@@ -1687,7 +1831,8 @@ if (order.status === 'delivered') {
           HEADER
       ====================================================== */}
 
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-100">
+      {/* Not sticky: the main app header (bell, profile menu) stays on top */}
+      <header className="relative bg-white/95 backdrop-blur border-b border-gray-100">
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
 
@@ -1873,6 +2018,45 @@ if (order.status === 'delivered') {
   Homepage Slides
 </button>
 
+            {/* ZUXU CUSTOM ORDERS */}
+            <button
+              onClick={() => setActiveTab('zuxu-custom')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'zuxu-custom'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <ImagePlus size={17} />
+              Zuxu Custom Orders
+            </button>
+
+            {/* DELIVERY & PACKING CHARGES */}
+            <button
+              onClick={() => setActiveTab('charges')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'charges'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <Package size={17} />
+              Delivery & Packing
+            </button>
+
+            {/* STAFF: duty, applications, logins */}
+            <button
+              onClick={() => setActiveTab('staff')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'staff'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <ChefHat size={17} />
+              Staff
+            </button>
+
             
 
           </div>
@@ -1895,6 +2079,9 @@ if (order.status === 'delivered') {
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
+
+            {/* CLEAR / DELETE ORDER HISTORY */}
+            <OrderHistoryControls orders={orders} onDone={fetchOrders} />
 
 
             {/* STATS */}
@@ -2041,6 +2228,9 @@ if (order.status === 'delivered') {
 
         {activeTab === 'inventory' && (
           <div className="space-y-6">
+
+            {/* KITCHEN OPEN / CLOSED (Bhook_Lgi only — not Zuxu) */}
+            <KitchenStatusCard />
 
 
             {/* INVENTORY HEADER */}
@@ -2665,6 +2855,21 @@ if (order.status === 'delivered') {
           <BannerManager />
         )}
 
+        {/* ZUXU CUSTOM ORDERS TAB */}
+        {activeTab === 'zuxu-custom' && (
+          <ZuxuCustomRequests />
+        )}
+
+        {/* DELIVERY & PACKING TAB */}
+        {activeTab === 'charges' && (
+          <ChargesSettings />
+        )}
+
+        {/* STAFF TAB */}
+        {activeTab === 'staff' && (
+          <StaffManager />
+        )}
+
       </main>
 
       
@@ -2794,7 +2999,7 @@ if (order.status === 'delivered') {
               </div>
 
 
-              {editingProduct?.categoryId === 'zuxu' && (editForm.images || []).length > 0 && (
+              {(editForm.images || []).length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                   {(editForm.images || []).map((image, index) => (
                     <div key={`${index}-${image.slice(0, 20)}`} className="relative">
@@ -2832,7 +3037,7 @@ if (order.status === 'delivered') {
                 <input
                   type="file"
                   accept="image/*"
-                  multiple={editingProduct?.categoryId === 'zuxu'}
+                  multiple
                   className="hidden"
                   onChange={handleEditImageChange}
                 />
@@ -2858,9 +3063,7 @@ if (order.status === 'delivered') {
                       (previous) => ({
                         ...previous,
                         imageUrl: event.target.value,
-                        ...(editingProduct?.categoryId === 'zuxu'
-                          ? { images: event.target.value ? [event.target.value, ...(previous.images || []).slice(1, 5)] : (previous.images || []).slice(1, 5) }
-                          : {}),
+                        images: event.target.value ? [event.target.value, ...(previous.images || []).slice(1, 5)] : (previous.images || []).slice(1, 5),
                       })
                     )
                   }
@@ -2936,6 +3139,34 @@ if (order.status === 'delivered') {
                 </div>
 
               </div>
+
+
+              {/* SIZES & EXTRAS PRICES */}
+
+              {editingProduct?.categoryId !== 'zuxu' && (
+                <PriceOptionsEditor
+                  value={editForm.priceOptions}
+                  onChange={(priceOptions) =>
+                    setEditForm((previous) => ({
+                      ...previous,
+                      priceOptions,
+                    }))
+                  }
+                />
+              )}
+
+              {/* WHICH HOSTELS CAN ORDER IT (Bhook_Lgi only) */}
+              {editingProduct?.categoryId !== 'zuxu' && (
+                <HostelAvailabilityPicker
+                  value={editForm.availableHostels || []}
+                  onChange={(availableHostels) =>
+                    setEditForm((previous) => ({
+                      ...previous,
+                      availableHostels,
+                    }))
+                  }
+                />
+              )}
 
 
               {/* DESCRIPTION */}
@@ -3121,7 +3352,7 @@ if (order.status === 'delivered') {
               </div>
 
 
-              {newProduct.categoryId === 'zuxu' && (newProduct.images || []).length > 0 && (
+              {(newProduct.images || []).length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                   {(newProduct.images || []).map((image, index) => (
                     <div key={`${index}-${image.slice(0, 20)}`} className="relative">
@@ -3169,7 +3400,7 @@ if (order.status === 'delivered') {
                 <input
                   type="file"
                   accept="image/*"
-                  multiple={newProduct.categoryId === 'zuxu'}
+                  multiple
                   className="hidden"
                   onChange={handleNewImageChange}
                 />
@@ -3195,9 +3426,7 @@ if (order.status === 'delivered') {
                       (previous) => ({
                         ...previous,
                         imageUrl: event.target.value,
-                        ...(newProduct.categoryId === 'zuxu'
-                          ? { images: event.target.value ? [event.target.value, ...(previous.images || []).slice(1, 5)] : (previous.images || []).slice(1, 5) }
-                          : {}),
+                        images: event.target.value ? [event.target.value, ...(previous.images || []).slice(1, 5)] : (previous.images || []).slice(1, 5),
                       })
                     )
                   }
@@ -3275,6 +3504,34 @@ if (order.status === 'delivered') {
                 </div>
 
               </div>
+
+
+              {/* SIZES & EXTRAS PRICES */}
+
+              {newProduct.categoryId !== 'zuxu' && (
+                <PriceOptionsEditor
+                  value={newProduct.priceOptions || EMPTY_PRICE_OPTIONS}
+                  onChange={(priceOptions) =>
+                    setNewProduct((previous) => ({
+                      ...previous,
+                      priceOptions,
+                    }))
+                  }
+                />
+              )}
+
+              {/* WHICH HOSTELS CAN ORDER IT (Bhook_Lgi only) */}
+              {newProduct.categoryId !== 'zuxu' && (
+                <HostelAvailabilityPicker
+                  value={newProduct.availableHostels || []}
+                  onChange={(availableHostels) =>
+                    setNewProduct((previous) => ({
+                      ...previous,
+                      availableHostels,
+                    }))
+                  }
+                />
+              )}
 
 
               {/* CATEGORY */}

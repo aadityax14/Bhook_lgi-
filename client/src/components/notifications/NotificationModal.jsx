@@ -8,6 +8,7 @@ import {
 
 import { useNotification } from '../../context/NotificationContext';
 import { useOrder } from '../../context/OrderContext';
+import { visibleNotifications } from '../../utils/notifications';
 
 export default function NotificationModal({
   isOpen,
@@ -21,37 +22,24 @@ export default function NotificationModal({
     markAllAsRead,
   } = useNotification();
 
-  const { orders } = useOrder();
+  const { myOrders: orders } = useOrder();
 
   if (!isOpen) return null;
 
   /*
-   * Remove notifications for orders that are already delivered.
-   *
-   * Notification remains visible while the order is active.
-   * Once backend status becomes "delivered",
-   * the notification disappears automatically.
+   * Notifications for delivered orders are hidden
+   * (same rule as the bell badge).
    */
-  const activeNotifications = notifications.filter((notification) => {
+  const activeNotifications = visibleNotifications(notifications, orders);
 
-    // Normal notification without an order
-    if (!notification.orderId) {
-      return true;
+  // Closing the list = the customer has seen everything,
+  // so the bell badge clears (new messages bring it back).
+  const handleClose = () => {
+    if (notifications.some((n) => !n.isRead)) {
+      markAllAsRead();
     }
-
-    // Find the related order
-    const order = orders.find(
-      (o) => o.id === notification.orderId
-    );
-
-    // If order isn't loaded yet, keep notification visible
-    if (!order) {
-      return true;
-    }
-
-    // Delivered order should not appear in notifications
-    return order.status !== 'delivered';
-  });
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs">
@@ -59,7 +47,7 @@ export default function NotificationModal({
       {/* Background */}
       <div
         className="fixed inset-0"
-        onClick={onClose}
+        onClick={handleClose}
       />
 
       <div className="relative z-10 w-full sm:max-w-sm bg-white h-full shadow-2xl flex flex-col justify-between overflow-hidden animate-slide-left">
@@ -113,7 +101,7 @@ export default function NotificationModal({
             )}
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600"
             >
 
@@ -170,7 +158,7 @@ export default function NotificationModal({
 
                       onTrackOrder(n.orderId);
 
-                      onClose();
+                      handleClose();
 
                     }
 

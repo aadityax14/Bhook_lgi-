@@ -13,6 +13,9 @@ import {
 import ZuxuProductDetails from '../ZuxuProductDetails';
 import { api } from '../../services/api';
 import { useCart } from '../../context/CartContext';
+import CustomOrderSection from './CustomOrderSection';
+import { Stars } from './ZuxuShared';
+import LoginModal from '../common/LoginModal';
 
 const PRICE_FILTERS = [
   { id: 'under99', label: 'Under ₹99' },
@@ -28,8 +31,20 @@ export default function ZuxuStore({ onBack }) {
   const [error, setError] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [wishlist, setWishlist] = useState([]);
+  const [ratings, setRatings] = useState({});
+  const [showSignIn, setShowSignIn] = useState(false);
 
   const { addToCart } = useCart();
+
+  // Star ratings for product cards
+  const loadRatings = async () => {
+    try {
+      const res = await api.getReviewSummary();
+      setRatings(res.data || {});
+    } catch {
+      // Ratings are optional
+    }
+  };
 
   // LOAD ZUXU PRODUCTS
   const loadProducts = async () => {
@@ -64,6 +79,7 @@ export default function ZuxuStore({ onBack }) {
 
   useEffect(() => {
     loadProducts();
+    loadRatings();
   }, []);
 
   // PRICE FILTERS
@@ -120,7 +136,8 @@ export default function ZuxuStore({ onBack }) {
     <div className="min-h-screen bg-brand-cream pb-24">
 
       {/* HEADER */}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-100">
+      {/* Not sticky: the main app header (bell, profile) stays on top */}
+      <div className="relative bg-white/95 backdrop-blur-md border-b border-gray-100 rounded-b-2xl">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
 
           <button
@@ -209,6 +226,9 @@ export default function ZuxuStore({ onBack }) {
 
           </div>
         </div>
+
+        {/* CUSTOM ORDERS */}
+        <CustomOrderSection onOpenSignIn={() => setShowSignIn(true)} />
 
         {/* FEATURED PRODUCTS */}
         {!loading && !error && products.some(product => product.isFeatured) && (
@@ -430,6 +450,15 @@ export default function ZuxuStore({ onBack }) {
                       {product.description}
                     </p>
 
+                    {ratings[product.id] && (
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <Stars value={ratings[product.id].average} size={11} />
+                        <span className="text-[10px] font-bold text-gray-500">
+                          {ratings[product.id].average} ({ratings[product.id].count})
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center flex-wrap gap-1.5 mt-3">
 
                       <span className="text-lg font-black text-brand-black">
@@ -496,8 +525,15 @@ export default function ZuxuStore({ onBack }) {
       {selectedProduct && (
         <ZuxuProductDetails
           product={selectedProduct}
-          onClose={closeProductDetails}
+          onClose={() => {
+            closeProductDetails();
+            loadRatings();
+          }}
         />
+      )}
+
+      {showSignIn && (
+        <LoginModal onClose={() => setShowSignIn(false)} />
       )}
 
     </div>

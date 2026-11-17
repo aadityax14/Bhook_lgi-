@@ -11,10 +11,19 @@ export default function CartDrawer({ isOpen, onClose, onProceedToCheckout }) {
     subtotal,
     deliveryFee,
     packagingFee,
-    total
+    total,
+    sameHostel,
+    feeSettings
   } = useCart();
 
+  const freeFrom = Number(feeSettings?.freeDeliveryFrom) || 0;
+
   if (!isOpen) return null;
+
+  // Zuxu gifts and Bhook_Lgi food are separate orders
+  // (different makers, tracking and delivery times).
+  const zuxuCount = items.filter(item => item.productType === 'zuxu').length;
+  const isMixedCart = zuxuCount > 0 && zuxuCount < items.length;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
@@ -161,7 +170,12 @@ export default function CartDrawer({ isOpen, onClose, onProceedToCheckout }) {
                 <span className="font-bold text-brand-black">₹{subtotal}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Hostel Delivery Charge</span>
+                <span>
+                  Hostel Delivery Charge
+                  {sameHostel && deliveryFee > 0 && (
+                    <span className="block text-[10px] text-emerald-600 font-bold">Chef in your hostel today 🎉</span>
+                  )}
+                </span>
                 <span className="font-bold text-brand-black">
                   {deliveryFee === 0 ? (
                     <span className="text-emerald-600 font-extrabold uppercase">FREE</span>
@@ -171,7 +185,7 @@ export default function CartDrawer({ isOpen, onClose, onProceedToCheckout }) {
                 </span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Late Night Packaging</span>
+                <span>Packing</span>
                 <span className="font-bold text-brand-black">₹{packagingFee}</span>
               </div>
               <div className="pt-2 border-t border-gray-100 flex justify-between text-sm font-black text-brand-black">
@@ -181,19 +195,27 @@ export default function CartDrawer({ isOpen, onClose, onProceedToCheckout }) {
             </div>
 
             {/* Free Delivery Banner */}
-            {subtotal < 120 && (
+            {freeFrom > 0 && subtotal < freeFrom && (
               <p className="text-[11px] text-center font-bold text-brand-yellowHover bg-brand-yellowLight/80 py-1.5 px-2 rounded-xl">
-                Add ₹{120 - subtotal} more for <strong className="text-brand-black">FREE Hostel Delivery</strong>!
+                Add ₹{freeFrom - subtotal} more for <strong className="text-brand-black">FREE Hostel Delivery</strong>!
+              </p>
+            )}
+
+            {isMixedCart && (
+              <p className="text-[11px] font-bold text-pink-700 bg-pink-50 border border-pink-100 py-2 px-3 rounded-xl">
+                🎀 Zuxu gifts and 🍜 Bhook_Lgi food are delivered separately. Please remove one
+                type and order them one at a time.
               </p>
             )}
 
             {/* Proceed to Order Button */}
             <button
+              disabled={isMixedCart}
               onClick={() => {
                 onClose();
                 onProceedToCheckout();
               }}
-              className="w-full py-3.5 px-5 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black font-black text-sm rounded-2xl shadow-yellow-glow flex items-center justify-between transition-all active:scale-98"
+              className="w-full py-3.5 px-5 bg-brand-yellow hover:bg-brand-yellowHover text-brand-black font-black text-sm rounded-2xl shadow-yellow-glow flex items-center justify-between transition-all active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <div className="flex items-center gap-2">
                 <span>Proceed to Order</span>

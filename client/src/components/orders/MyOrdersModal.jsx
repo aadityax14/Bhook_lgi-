@@ -3,7 +3,7 @@ import { X, Package, Clock, CheckCircle, Truck } from 'lucide-react';
 import { useOrder } from '../../context/OrderContext';
 
 export default function MyOrdersModal({ isOpen, onClose }) {
-  const { orders, setActiveOrderId } = useOrder();
+  const { myOrders: orders, setActiveOrderId } = useOrder();
 
   if (!isOpen) return null;
 
@@ -35,6 +35,13 @@ export default function MyOrdersModal({ isOpen, onClose }) {
           label: 'Ready',
           icon: <CheckCircle className="w-4 h-4" />,
           className: 'bg-green-50 text-green-700 border-green-200'
+        };
+
+      case 'ready_to_dispatch':
+        return {
+          label: 'Ready to Dispatch',
+          icon: <Package className="w-4 h-4" />,
+          className: 'bg-pink-50 text-pink-700 border-pink-200'
         };
 
       case 'out_for_delivery':

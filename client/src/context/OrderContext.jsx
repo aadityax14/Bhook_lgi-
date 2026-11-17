@@ -1,25 +1,64 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { useAuth } from './AuthContext';
 
 const OrderContext = createContext();
 
 export function OrderProvider({ children }) {
+  const { isAuthenticated, user, role } = useAuth();
+
+  // Who can load what (the server enforces the same rules).
+  // Staff see the order queue only while on duty; off duty they shop
+  // like a normal customer.
+  const isStaff = role === 'CHEF' || role === 'DELIVERY';
+  const canSeeAllOrders = role === 'ADMIN' || (isStaff && Boolean(user?.onDutyToday));
+  const canShop = ['CUSTOMER', 'ADMIN', 'CHEF', 'DELIVERY'].includes(role);
+
+  // All orders: used by admin / chef / delivery dashboards.
   const [orders, setOrders] = useState([]);
+  // Only the signed-in customer's orders: used by customer screens.
+  const [myOrders, setMyOrders] = useState([]);
   const [activeOrderId, setActiveOrderId] = useState(() => {
-    return localStorage.getItem('bhook_active_order_id') || 'bl-ord-1001';
+    return localStorage.getItem('bhook_active_order_id') || null;
   });
   const [loading, setLoading] = useState(false);
 
   const fetchOrders = useCallback(async () => {
-    try {
-      const res = await api.getOrders();
-      if (res && res.data) {
-        setOrders(res.data);
+    if (canSeeAllOrders) {
+      try {
+        const res = await api.getOrders();
+        if (res && res.data) {
+          setOrders(res.data);
+        }
+      } catch (err) {
+        console.warn('Could not fetch orders from API:', err.message);
       }
-    } catch (err) {
-      console.warn('Could not fetch orders from API:', err.message);
+    } else {
+      setOrders([]);
     }
-  }, []);
+
+    if (isAuthenticated && canShop) {
+      try {
+        const mine = await api.getMyOrders();
+        if (mine && mine.data) {
+          setMyOrders(mine.data);
+        }
+      } catch (err) {
+        console.warn('Could not fetch my orders:', err.message);
+      }
+    } else {
+      setMyOrders([]);
+    }
+  }, [isAuthenticated, user?.id, canSeeAllOrders, canShop]);
+
+  // Forget the tracked order when the customer signs out.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setMyOrders([]);
+      setActiveOrderId(null);
+      localStorage.removeItem('bhook_active_order_id');
+    }
+  }, [isAuthenticated]);
 
   // Poll for real-time status updates every 3.5 seconds
   useEffect(() => {
@@ -35,6 +74,10 @@ export function OrderProvider({ children }) {
   }, [activeOrderId]);
 
   const placeOrder = async (orderPayload) => {
+  if (!isAuthenticated) {
+    throw new Error('Please sign in to place an order.');
+  }
+
   setLoading(true);
 
   try {
@@ -50,6 +93,7 @@ export function OrderProvider({ children }) {
       console.log("3️⃣ ORDER CREATED:", newOrder);
 
       setOrders(prev => [newOrder, ...prev]);
+      setMyOrders(prev => [newOrder, ...prev]);
       setActiveOrderId(newOrder.id);
 
       return newOrder;
@@ -72,6 +116,12 @@ export function OrderProvider({ children }) {
         return res.data;
       }
     } catch (err) {
+      // The server refused (not allowed / not on duty / bad status):
+      // don't pretend it worked.
+      if (err.status) {
+        throw err;
+      }
+
       console.warn('Local status update fallback:', err.message);
       setOrders(prev =>
         prev.map(o => (o.id === orderId ? { ...o, status: newStatus, updatedAt: new Date().toISOString() } : o))
@@ -79,12 +129,14 @@ export function OrderProvider({ children }) {
     }
   };
 
-  const activeOrder = orders.find(o => o.id === activeOrderId) || orders[0] || null;
+  // The customer can only track their own orders.
+  const activeOrder = myOrders.find(o => o.id === activeOrderId) || myOrders[0] || null;
 
   return (
     <OrderContext.Provider
       value={{
         orders,
+        myOrders,
         activeOrder,
         activeOrderId,
         setActiveOrderId,

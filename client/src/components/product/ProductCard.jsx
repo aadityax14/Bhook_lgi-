@@ -1,8 +1,15 @@
 import React from 'react';
-import { Plus, Flame, Ban } from 'lucide-react';
+import { Plus, Flame, Ban, MapPinOff } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { isAvailableInHostel, availableHostelsOf } from '../../utils/availability';
 
 export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
-  const isAvailable = product.isAvailable !== false;
+  const { user } = useAuth();
+
+  const inStock = product.isAvailable !== false;
+  // Sold in the customer's hostel? (Different from out of stock.)
+  const inMyHostel = isAvailableInHostel(product, user?.hostel);
+  const isAvailable = inStock && inMyHostel;
 
   const handleAction = (e) => {
     e.stopPropagation();
@@ -19,11 +26,13 @@ export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
 
   return (
     <div
-      onClick={() => isAvailable && onSelectProduct(product)}
-      className={`group relative bg-white rounded-3xl p-3.5 border transition-all duration-200 flex flex-col justify-between ${
+      // Opens the full product page (photos, reviews, options) —
+      // even when unavailable, so customers can still look.
+      onClick={() => onSelectProduct(product)}
+      className={`group relative bg-white rounded-3xl p-3.5 border transition-all duration-200 flex flex-col justify-between cursor-pointer ${
         isAvailable
-          ? 'border-gray-100 shadow-soft hover:shadow-card-lift hover:border-brand-yellow/50 cursor-pointer active:scale-[0.99]'
-          : 'border-gray-100 opacity-65 bg-gray-50/80 cursor-not-allowed'
+          ? 'border-gray-100 shadow-soft hover:shadow-card-lift hover:border-brand-yellow/50 active:scale-[0.99]'
+          : 'border-gray-100 opacity-75 bg-gray-50/80'
       }`}
     >
       {/* Top Image & Badge Section */}
@@ -43,6 +52,11 @@ export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
             <span className="inline-flex items-center gap-1 bg-white/95 backdrop-blur-md text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               Available
+            </span>
+          ) : inStock && !inMyHostel ? (
+            <span className="inline-flex items-center gap-1 bg-white/95 backdrop-blur-md text-gray-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs">
+              <MapPinOff className="w-2.5 h-2.5" />
+              Not available in {user?.hostel || 'your hostel'}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 bg-brand-black/90 backdrop-blur-md text-brand-chili text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs">
@@ -83,6 +97,11 @@ export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
           <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-3">
             {product.description}
           </p>
+          {inStock && !inMyHostel && (
+            <p className="text-[11px] font-bold text-gray-500 -mt-2 mb-3">
+              Only in: {availableHostelsOf(product).join(', ')}
+            </p>
+          )}
         </div>
 
         {/* Footer: Price & Add Button */}
@@ -110,7 +129,7 @@ export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
                 <span>ADD</span>
               </>
             ) : (
-              <span>Unavailable</span>
+              <span>{inStock ? 'Not in your hostel' : 'Unavailable'}</span>
             )}
           </button>
         </div>

@@ -1,53 +1,117 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState
 } from 'react';
+import { api } from '../services/api';
 
 const AuthContext = createContext();
 
+// Default profile details are kept for existing app UI compatibility
+// (shown before anyone signs in).
+const GUEST_USER = {
+  name: 'Aaditya Yadav',
+  phone: '9876543210',
+  hostel: 'GH4',
+  roomNumber: '312',
+  role: 'CUSTOMER'
+};
+
+const normalizeRole = (role) => String(role || 'CUSTOMER').toUpperCase();
+
 export function AuthProvider({ children }) {
-  // Default profile details are kept for existing app UI compatibility.
-  const [user, setUser] = useState({
-    name: 'Aaditya Yadav',
-    phone: '9876543210',
-    hostel: 'GH4',
-    roomNumber: '312',
-    role: 'student'
-  });
+  const [user, setUser] = useState(GUEST_USER);
 
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [isAdminView, setIsAdminView] = useState(false);
+  // Admins can switch between the Admin Dashboard and the shop.
+  const [adminViewOpen, setAdminViewOpen] = useState(false);
   const [isMobileFrame, setIsMobileFrame] = useState(false);
 
-  // Restore login details when the app opens or refreshes.
+  const role = isAuthenticated ? normalizeRole(user?.role) : 'GUEST';
+  const isAdmin = role === 'ADMIN';
+  const isStaff = role === 'CHEF' || role === 'DELIVERY';
+
+  // The Admin Dashboard can only be shown to an admin account.
+  // (The server also refuses every admin API call from anyone else.)
+  const isAdminView = isAdmin && adminViewOpen;
+
+  const setIsAdminView = useCallback(
+    (value) => {
+      setAdminViewOpen(prev => {
+        const next = typeof value === 'function' ? value(prev) : value;
+        return Boolean(next);
+      });
+    },
+    []
+  );
+
+  const clearSession = useCallback(() => {
+    setUser(GUEST_USER);
+    setIsAuthenticated(false);
+    setAdminViewOpen(false);
+
+    localStorage.removeItem('bhook_user');
+    localStorage.removeItem('bhook_token');
+  }, []);
+
+  const saveUser = useCallback((userData) => {
+    setUser(userData);
+    localStorage.setItem('bhook_user', JSON.stringify(userData));
+  }, []);
+
+  // Restore login when the app opens, then confirm the account and
+  // its CURRENT role with the server (never trust the saved copy).
   useEffect(() => {
     const savedUser = localStorage.getItem('bhook_user');
     const savedToken = localStorage.getItem('bhook_token');
 
-    if (savedUser && savedToken) {
-      try {
-        const parsedUser = JSON.parse(savedUser);
-
-        setUser(parsedUser);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Invalid saved user:', error);
-
-        localStorage.removeItem('bhook_user');
-        localStorage.removeItem('bhook_token');
-
-        setIsAuthenticated(false);
-      }
-    } else {
+    if (!savedUser || !savedToken) {
       setIsAuthenticated(false);
+      setAuthLoading(false);
+      return;
     }
 
-    setAuthLoading(false);
-  }, []);
+    try {
+      setUser(JSON.parse(savedUser));
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Invalid saved user:', error);
+      clearSession();
+      setAuthLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    api.getCurrentUser()
+      .then(res => {
+        if (cancelled || !res?.user) return;
+
+        saveUser(res.user);
+
+        if (normalizeRole(res.user.role) === 'ADMIN') {
+          setAdminViewOpen(true);
+        }
+      })
+      .catch(err => {
+        // Expired / invalid / disabled account: sign out.
+        // Network problems keep the saved session.
+        if (!cancelled && err?.status === 401) {
+          clearSession();
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearSession, saveUser]);
 
   // Called after successful login or account creation.
   const login = (userData, token) => {
@@ -57,36 +121,19 @@ export function AuthProvider({ children }) {
       return false;
     }
 
-    setUser(userData);
+    localStorage.setItem('bhook_token', token);
+    saveUser(userData);
     setIsAuthenticated(true);
 
-    localStorage.setItem(
-      'bhook_user',
-      JSON.stringify(userData)
-    );
-
-    localStorage.setItem(
-      'bhook_token',
-      token
-    );
+    // Admin goes straight to the Admin Dashboard.
+    setAdminViewOpen(normalizeRole(userData.role) === 'ADMIN');
 
     return true;
   };
 
   // Sign out the current user.
   const logout = () => {
-    setUser({
-      name: 'Aaditya Yadav',
-      phone: '9876543210',
-      hostel: 'GH4',
-      roomNumber: '312',
-      role: 'student'
-    });
-
-    setIsAuthenticated(false);
-
-    localStorage.removeItem('bhook_user');
-    localStorage.removeItem('bhook_token');
+    clearSession();
   };
 
   // Update user details.
@@ -127,6 +174,10 @@ export function AuthProvider({ children }) {
 
         authLoading,
         isAuthenticated,
+
+        role,
+        isAdmin,
+        isStaff,
 
         isAdminView,
         setIsAdminView,
