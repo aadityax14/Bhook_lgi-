@@ -11,6 +11,7 @@ import { pool } from '../db/postgres.js';
 
 const router = express.Router();
 
+<<<<<<< HEAD
 // Customers and the admin place and track orders. Chefs / delivery
 // partners can too (the app lets them shop when they're off duty).
 const shopper = requireRole('CUSTOMER', 'ADMIN', 'CHEF', 'DELIVERY');
@@ -57,8 +58,12 @@ router.get('/my', shopper, (req, res) => {
 
 // GET /api/orders (Admin / on-duty kitchen & delivery staff)
 router.get('/', kitchenAccess, (req, res) => {
+=======
+// GET /api/orders (Admin / all)
+router.get('/', async (req, res) => {
+>>>>>>> main
   try {
-    const orders = store.getOrders();
+    const orders = await store.getOrders();
 
     res.json({
       success: true,
@@ -73,6 +78,7 @@ router.get('/', kitchenAccess, (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // POST /api/orders/clear-history  { scope: 'finished' | 'all' }  (admin)
 // finished = delivered + cancelled orders; all = every order.
 // A backup of the data file is saved first; delivery partners keep
@@ -116,10 +122,14 @@ router.delete('/:id', requireRole('ADMIN'), (req, res) => {
 
 // GET /api/orders/user/:phone (admin only)
 router.get('/user/:phone', requireRole('ADMIN'), (req, res) => {
+=======
+// GET /api/orders/user/:phone
+router.get('/user/:phone', async (req, res) => {
+>>>>>>> main
   try {
-    const orders = store
-      .getOrders()
-      .filter(o => o.customerPhone === req.params.phone);
+    const orders = await store.getOrders({
+      customerPhone: req.params.phone
+    });
 
     res.json({
       success: true,
@@ -135,10 +145,14 @@ router.get('/user/:phone', requireRole('ADMIN'), (req, res) => {
 });
 
 // GET /api/orders/:id
+<<<<<<< HEAD
 // The customer who placed it, the admin, or kitchen/delivery staff.
 router.get('/:id', requireRole('CUSTOMER', 'ADMIN', 'CHEF', 'DELIVERY'), (req, res) => {
+=======
+router.get('/:id', async (req, res) => {
+>>>>>>> main
   try {
-    const order = store.getOrderById(req.params.id);
+    const order = await store.getOrderById(req.params.id);
 
     const canSee =
       order &&
@@ -165,8 +179,13 @@ router.get('/:id', requireRole('CUSTOMER', 'ADMIN', 'CHEF', 'DELIVERY'), (req, r
 });
 
 // POST /api/orders
+<<<<<<< HEAD
 // Place new order (signed-in customers only)
 router.post('/', shopper, async (req, res) => {
+=======
+// Place new order
+router.post('/', async (req, res) => {
+>>>>>>> main
   try {
     const {
       customerName,
@@ -272,7 +291,11 @@ router.post('/', shopper, async (req, res) => {
     // REAL SERVER-SIDE STOCK CHECK
     // ============================================
 
+<<<<<<< HEAD
     const stockCheck = store.checkOrderStock(priced.items);
+=======
+    const stockCheck = await store.checkOrderStock(items);
+>>>>>>> main
 
     if (!stockCheck.ok) {
       return res.status(409).json({
@@ -285,9 +308,13 @@ router.post('/', shopper, async (req, res) => {
     // CREATE ORDER
     // ============================================
 
+<<<<<<< HEAD
     const createdOrder = store.createOrder({
       userId: req.user.userId,
       orderType,
+=======
+    const createdOrder = await store.createOrder({
+>>>>>>> main
       customerName,
       customerPhone,
       hostel,
@@ -312,7 +339,8 @@ router.post('/', shopper, async (req, res) => {
   } catch (err) {
     console.error('CREATE ORDER ERROR:', err);
 
-    res.status(500).json({
+    // Stock ran out between the check above and the insert
+    res.status(err.status || 500).json({
       success: false,
       error: err.message
     });
@@ -320,8 +348,13 @@ router.post('/', shopper, async (req, res) => {
 });
 
 // PATCH /api/orders/:id/status
+<<<<<<< HEAD
 // Admin, or on-duty chef/delivery staff (only their own steps)
 router.patch('/:id/status', kitchenAccess, async (req, res) => {
+=======
+// Admin changes order status
+router.patch('/:id/status', async (req, res) => {
+>>>>>>> main
   try {
     const { status } = req.body;
 
@@ -401,7 +434,11 @@ router.patch('/:id/status', kitchenAccess, async (req, res) => {
     // UPDATE ORDER
     // ============================================
 
+<<<<<<< HEAD
     let updated = store.updateOrderStatus(
+=======
+    const updated = await store.updateOrderStatus(
+>>>>>>> main
       req.params.id,
       status
     );
@@ -447,6 +484,7 @@ router.patch('/:id/status', kitchenAccess, async (req, res) => {
 
     // Stock-related error
     if (
+      err.status === 409 ||
       err.message &&
       (
         err.message.toLowerCase().includes('stock') ||

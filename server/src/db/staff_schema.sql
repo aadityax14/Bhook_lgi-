@@ -12,9 +12,14 @@ CREATE TABLE IF NOT EXISTS staff_applications (
     email VARCHAR(150) NOT NULL,
     student_id VARCHAR(80) NOT NULL,
 
+<<<<<<< HEAD
     role VARCHAR(20) DEFAULT 'delivery',        -- 'chef' | 'delivery'
     days_per_week SMALLINT NOT NULL,
     status VARCHAR(20) DEFAULT 'pending',       -- 'pending' | 'approved' | 'rejected'
+=======
+    role VARCHAR(20) NOT NULL
+        CHECK (role IN ('chef', 'delivery')),
+>>>>>>> main
 
     -- Password chosen by the applicant (bcrypt hash). Moved to
     -- staff_accounts and cleared here when the admin approves.
@@ -39,7 +44,7 @@ CREATE TABLE IF NOT EXISTS staff_accounts (
     email VARCHAR(150),
 
     role VARCHAR(20) NOT NULL
-        CHECK (role IN ('CHEF', 'DELIVERY')),
+        CHECK (role IN ('chef', 'delivery')),
 
     password_hash TEXT NOT NULL,
     must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
