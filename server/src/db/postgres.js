@@ -27,6 +27,15 @@ pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL error:', err);
 });
 
+export async function testDatabaseConnection() {
+  try {
+    const result = await pool.query('SELECT NOW() AS current_time');
+    console.log('✅ PostgreSQL connected:', result.rows[0].current_time);
+  } catch (error) {
+    console.error('❌ PostgreSQL connection failed:', error.message);
+  }
+}
+
 // Runs fn(client) inside a transaction; rolls back if it throws.
 export async function withTransaction(fn) {
   const client = await pool.connect();

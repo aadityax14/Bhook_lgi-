@@ -210,9 +210,9 @@ const validateAdvancedFields = (data) => {
 
 
 // GET /api/categories
-router.get('/categories', async (req, res) => {
+router.get('/categories', (req, res) => {
   try {
-    const categories = await store.getCategories();
+    const categories = store.getCategories();
 
     res.json({
       success: true,
@@ -228,11 +228,11 @@ router.get('/categories', async (req, res) => {
 
 
 // GET /api/products
-router.get('/', async (req, res) => {
+router.get('/', (req, res) => {
   try {
     const { category, search } = req.query;
 
-    const products = await store.getProducts(category, search);
+    const products = store.getProducts(category, search);
 
     res.json({
       success: true,
@@ -249,9 +249,9 @@ router.get('/', async (req, res) => {
 
 
 // GET /api/products/:id
-router.get('/:id', async (req, res) => {
+router.get('/:id', (req, res) => {
   try {
-    const product = await store.getProductById(req.params.id);
+    const product = store.getProductById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -274,11 +274,7 @@ router.get('/:id', async (req, res) => {
 
 
 // POST /api/products
-<<<<<<< HEAD
 router.post('/', adminOnly, (req, res) => {
-=======
-router.post('/', async (req, res) => {
->>>>>>> main
   try {
     const body = req.body || {};
 
@@ -311,12 +307,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
     const priceResult = validateNonNegativeNumber(price, 'Price');
-=======
-    const newProduct = await store.createProduct({
-      name: name.trim(),
->>>>>>> main
 
     if (!priceResult.valid) {
       return res.status(400).json({
@@ -411,13 +402,9 @@ router.post('/', async (req, res) => {
 
 
 // PATCH /api/products/:id
-<<<<<<< HEAD
 router.patch('/:id', adminOnly, (req, res) => {
-=======
-router.patch('/:id', async (req, res) => {
->>>>>>> main
   try {
-    const product = await store.getProductById(req.params.id);
+    const product = store.getProductById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -531,7 +518,6 @@ router.patch('/:id', async (req, res) => {
       updates.imageUrl = updates.imageUrl.trim();
     }
 
-<<<<<<< HEAD
     // ADVANCED PRODUCT FIELDS
     const advancedFields = {};
 
@@ -554,9 +540,6 @@ router.patch('/:id', async (req, res) => {
     Object.assign(updates, advancedFields);
 
     const updated = store.updateProduct(
-=======
-    const updated = await store.updateProduct(
->>>>>>> main
       req.params.id,
       updates
     );
@@ -585,13 +568,9 @@ router.patch('/:id', async (req, res) => {
 
 
 // DELETE /api/products/:id
-<<<<<<< HEAD
 router.delete('/:id', adminOnly, (req, res) => {
-=======
-router.delete('/:id', async (req, res) => {
->>>>>>> main
   try {
-    const success = await store.deleteProduct(req.params.id);
+    const success = store.deleteProduct(req.params.id);
 
     if (!success) {
       return res.status(404).json({
