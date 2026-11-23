@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 import SplashScreen from './components/splash/SplashScreen';
 import Header from './components/common/Header';
@@ -29,6 +29,7 @@ import { useOrder } from './context/OrderContext';
 import { useAuth } from './context/AuthContext';
 import { api } from './services/api';
 import { FALLBACK_PRODUCTS } from './data/fallbackProducts';
+import { pushBackStep, useBackStep, goBack } from './utils/backNavigation';
 
 export default function App() {
   const [showWorkWithBhookLgi, setShowWorkWithBhookLgi] = useState(false);
@@ -72,6 +73,34 @@ export default function App() {
     setIsAdminView,
     isMobileFrame
   } = useAuth();
+
+  // ==========================================================
+  // BACK BUTTON: every screen / popup is one step, so the phone's
+  // Back button goes back the way the user came instead of
+  // closing the website.
+  // ==========================================================
+
+  const { isAdmin } = useAuth();
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  // Switch screens and remember the previous one for Back.
+  const goToTab = useCallback((tab) => {
+    const previous = activeTabRef.current;
+    if (previous === tab) return;
+    pushBackStep(() => setActiveTab(previous));
+    setActiveTab(tab);
+  }, []);
+
+  useBackStep(Boolean(selectedProduct), () => setSelectedProduct(null));
+  useBackStep(isCartOpen, () => setIsCartOpen(false));
+  useBackStep(isCheckoutOpen, () => setIsCheckoutOpen(false));
+  useBackStep(isNotificationsOpen, () => setIsNotificationsOpen(false));
+  useBackStep(showWorkWithBhookLgi, () => setShowWorkWithBhookLgi(false));
+  useBackStep(Boolean(confirmedOrder), () => setConfirmedOrder(null));
+  useBackStep(isZuxuView, () => setIsZuxuView(false));
+  // Admin opened the shop from the dashboard → Back returns to it.
+  useBackStep(isAdmin && !isAdminView, () => setIsAdminView(true));
 
   // ==========================================================
   // PRODUCT FILTER
@@ -237,7 +266,7 @@ export default function App() {
     if (orderId) setActiveOrderId(orderId);
     setIsZuxuView(false);
     setIsAdminView(false);
-    setActiveTab('orders');
+    goToTab('orders');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -268,7 +297,7 @@ export default function App() {
     if (isZuxuView) {
       return (
         <ZuxuStore
-          onBack={handleBackFromZuxu}
+          onBack={() => goBack(handleBackFromZuxu)}
         />
       );
     }
@@ -277,8 +306,8 @@ export default function App() {
     if (activeTab === 'profile') {
       return (
         <ProfilePage
-          onBack={() => setActiveTab('home')}
-          onOpenOrders={() => setActiveTab('all-orders')}
+          onBack={() => goBack(() => setActiveTab('home'))}
+          onOpenOrders={() => goToTab('all-orders')}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
           onWorkWithUs={() => setShowWorkWithBhookLgi(true)}
         />
@@ -291,9 +320,9 @@ export default function App() {
         <OrdersListPage
           onSelectOrder={(id) => {
             setActiveOrderId(id);
-            setActiveTab('orders');
+            goToTab('orders');
           }}
-          onStartNewOrder={() => setActiveTab('home')}
+          onStartNewOrder={() => goToTab('home')}
         />
       );
     }
@@ -302,8 +331,8 @@ export default function App() {
     if (activeTab === 'orders') {
       return (
         <OrderTrackingView
-          onBackToMenu={() => setActiveTab('home')}
-          onOpenAllOrders={() => setActiveTab('all-orders')}
+          onBackToMenu={() => goToTab('home')}
+          onOpenAllOrders={() => goToTab('all-orders')}
           onExploreZuxu={handleExploreZuxu}
         />
       );
@@ -339,7 +368,7 @@ export default function App() {
               activeTab !== 'home' &&
               activeTab !== 'menu'
             ) {
-              setActiveTab('menu');
+              goToTab('menu');
             }
           }}
         />
@@ -476,13 +505,13 @@ export default function App() {
             onOpenMyOrders={() => {
               setIsAdminView(false);
               setIsZuxuView(false);
-              setActiveTab('all-orders');
+              goToTab('all-orders');
             }}
 
             onLogoClick={() => {
               setIsAdminView(false);
               setIsZuxuView(false);
-              setActiveTab('home');
+              goToTab('home');
               setActiveCategory('all');
               setSearchQuery('');
             }}
@@ -490,7 +519,7 @@ export default function App() {
             onOpenProfile={() => {
               setIsAdminView(false);
               setIsZuxuView(false);
-              setActiveTab('profile');
+              goToTab('profile');
             }}
 
             onWorkWithBhookLgi={() => {
@@ -516,7 +545,7 @@ export default function App() {
             activeTab={activeTab}
             setActiveTab={(tab) => {
               setIsZuxuView(false);
-              setActiveTab(tab);
+              goToTab(tab);
             }}
             onOpenCart={() => setIsCartOpen(true)}
             onOpenZuxu={handleExploreZuxu}

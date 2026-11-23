@@ -39,6 +39,30 @@ export async function getTodayIST() {
   return result.rows[0].today;
 }
 
+// Message for an account the admin blocked or terminated (else null).
+export function accountBlockedMessage(user) {
+  if (user?.terminated_at) {
+    return 'This account has been permanently removed from Bhook_Lgi.';
+  }
+  if (user?.is_blocked) {
+    return 'Your account has been blocked by the admin. Please contact Bhook_Lgi.';
+  }
+  return null;
+}
+
+// Remember when a customer last used the app (at most once a minute),
+// so the admin can see who is online.
+export function markUserSeen(userId) {
+  pool
+    .query(
+      `UPDATE users SET last_seen_at = NOW()
+        WHERE id = $1
+          AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute')`,
+      [userId]
+    )
+    .catch((error) => console.warn('Could not update last seen:', error.message));
+}
+
 function readToken(req) {
   const authHeader = req.headers.authorization;
 
@@ -120,7 +144,7 @@ export function requireRole(...roles) {
         current = { userId: String(row.id), role: normalizeRole(row.role), kind: 'staff' };
       } else {
         const result = await pool.query(
-          'SELECT id, role FROM users WHERE id = $1',
+          'SELECT id, role, is_blocked, terminated_at FROM users WHERE id = $1',
           [tokenUser.userId]
         );
         const row = result.rows[0];
@@ -131,6 +155,18 @@ export function requireRole(...roles) {
             error: 'Your account no longer exists. Please sign in again.'
           });
         }
+
+        // Blocked / terminated by the admin: signed out immediately.
+        const blockedMessage = accountBlockedMessage(row);
+        if (blockedMessage) {
+          return res.status(401).json({
+            success: false,
+            code: 'ACCOUNT_BLOCKED',
+            error: blockedMessage
+          });
+        }
+
+        markUserSeen(row.id);
 
         current = { userId: String(row.id), role: normalizeRole(row.role), kind: 'user' };
       }

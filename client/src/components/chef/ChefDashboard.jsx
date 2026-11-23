@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Bike,
   Check,
   ChefHat,
   Clock,
@@ -7,9 +8,13 @@ import {
   Utensils
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ChefDashboard() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  // The admin can let a chef deliver orders too (Kitchen Plan).
+  const [canDeliver, setCanDeliver] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
 
@@ -24,6 +29,7 @@ export default function ChefDashboard() {
       if (res && res.data) {
         // Zuxu (handmade) orders are handled by the admin, not the kitchen.
         setOrders(res.data.filter(order => order.orderType !== 'zuxu'));
+        setCanDeliver(Boolean(res.canDeliver));
       }
     } catch (err) {
       console.error('Failed to fetch chef orders:', err);
@@ -204,7 +210,11 @@ export default function ChefDashboard() {
   // CHEF ORDERS
   // =========================================================
 
-  const chefOrders = orders.filter(order =>
+  // Orders this chef cooks (the server also sends ready orders to
+  // deliver when the chef is allowed to deliver).
+  const kitchenOrders = orders.filter(order => order.kitchenForMe !== false);
+
+  const chefOrders = kitchenOrders.filter(order =>
     [
       'placed',
       'accepted',
@@ -212,6 +222,26 @@ export default function ChefDashboard() {
       'ready'
     ].includes(order.status)
   );
+
+  // =========================================================
+  // DELIVERY (only when the admin turned on "Also delivers")
+  // =========================================================
+
+  const deliveryOrders = canDeliver
+    ? orders.filter(order =>
+        order.status === 'ready' ||
+        (order.status === 'out_for_delivery' &&
+          (order.deliveryByMe || !order.deliveryPartnerId))
+      )
+    : [];
+
+  const todayKey = new Date().toDateString();
+  const myDeliveriesToday = orders.filter(order =>
+    order.status === 'delivered' &&
+    order.deliveryByMe &&
+    order.deliveredAt &&
+    new Date(order.deliveredAt).toDateString() === todayKey
+  ).length;
 
   // =========================================================
   // RENDER
@@ -276,7 +306,7 @@ export default function ChefDashboard() {
 
             <p className="text-2xl font-bold text-gray-900">
               {
-                orders.filter(
+                kitchenOrders.filter(
                   order =>
                     order.status === 'placed'
                 ).length
@@ -293,7 +323,7 @@ export default function ChefDashboard() {
 
             <p className="text-2xl font-bold text-yellow-500">
               {
-                orders.filter(
+                kitchenOrders.filter(
                   order =>
                     order.status === 'preparing'
                 ).length
@@ -310,7 +340,7 @@ export default function ChefDashboard() {
 
             <p className="text-2xl font-bold text-green-500">
               {
-                orders.filter(
+                kitchenOrders.filter(
                   order =>
                     order.status === 'ready'
                 ).length
@@ -407,6 +437,13 @@ export default function ChefDashboard() {
                           {order.status}
                         </span>
 
+                        {/* The admin sent this order (or its items) to this chef */}
+                        {order.assignedToMe && (
+                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-black text-yellow-300">
+                            👨‍🍳 Assigned to you
+                          </span>
+                        )}
+
                       </div>
 
                       <div className="flex items-center gap-2 text-sm text-gray-500 mt-2">
@@ -471,6 +508,19 @@ export default function ChefDashboard() {
                           <p className="font-semibold text-gray-900">
                             {item.quantity} × {item.productName}
                           </p>
+
+                          {/* Kitchen plan: who makes this item */}
+                          {!order.assignedChefId && item.chefId && (
+                            <p className={`text-xs font-bold ${
+                              String(item.chefId) === String(user?.id)
+                                ? 'text-green-700'
+                                : 'text-gray-400'
+                            }`}>
+                              {String(item.chefId) === String(user?.id)
+                                ? '👨‍🍳 Your item'
+                                : `Made by ${item.chefName || 'another chef'}`}
+                            </p>
+                          )}
 
                           {item.variant && (
                             <p className="text-sm text-gray-500">
@@ -641,6 +691,131 @@ export default function ChefDashboard() {
 
           </div>
 
+        )}
+
+        {/* =================================================
+            DELIVERIES (chef who also delivers)
+        ================================================= */}
+
+        {canDeliver && (
+          <section className="mt-8">
+
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center">
+                  <Bike className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Deliveries</h2>
+                  <p className="text-sm text-gray-500">
+                    The admin also made you a delivery partner today
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <p className="text-2xl font-bold text-blue-600">{myDeliveriesToday}</p>
+                <p className="text-xs text-gray-500">delivered today</p>
+              </div>
+            </div>
+
+            {deliveryOrders.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center border border-gray-100 text-sm text-gray-500">
+                No orders waiting for delivery. Ready orders appear here.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {deliveryOrders.map(order => (
+                  <div
+                    key={`delivery-${order.id}`}
+                    className="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 sm:p-5"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-lg text-gray-900">{order.orderNumber}</h3>
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                              order.status === 'ready'
+                                ? 'bg-green-500 text-white'
+                                : 'bg-blue-600 text-white'
+                            }`}
+                          >
+                            {order.status === 'ready' ? 'Ready for pickup' : 'On the way'}
+                          </span>
+                        </div>
+
+                        <p className="text-sm font-semibold text-gray-800 mt-2">
+                          {order.customerName} · {order.hostel} • Room {order.roomNumber}
+                        </p>
+
+                        {order.customerPhone && (
+                          <a
+                            href={`tel:${order.customerPhone}`}
+                            className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-green-50 px-2.5 py-1 text-xs font-black text-green-700"
+                          >
+                            📞 {order.customerPhone}
+                          </a>
+                        )}
+
+                        <p className="text-xs text-gray-500 mt-2">
+                          {(order.items || [])
+                            .map(item => `${item.quantity} × ${item.productName}`)
+                            .join(', ')}
+                        </p>
+
+                        {order.deliveryNotes && (
+                          <p className="text-xs text-gray-600 mt-1">
+                            <strong>Note:</strong> {order.deliveryNotes}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="text-left sm:text-right">
+                        <p className="font-bold text-gray-900">₹{order.total}</p>
+                        <p className="text-xs text-gray-500">
+                          Delivery charge ₹{Number(order.deliveryFee || 0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      disabled={updatingId === order.id}
+                      onClick={() =>
+                        updateStatus(
+                          order.id,
+                          order.status === 'ready' ? 'out_for_delivery' : 'delivered'
+                        )
+                      }
+                      className={`mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-white disabled:opacity-50 ${
+                        order.status === 'ready'
+                          ? 'bg-blue-600 hover:bg-blue-700'
+                          : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                    >
+                      {updatingId === order.id ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          Updating...
+                        </>
+                      ) : order.status === 'ready' ? (
+                        <>
+                          <Bike className="w-5 h-5" />
+                          Pick up · Out for delivery
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-5 h-5" />
+                          Mark Delivered
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+          </section>
         )}
 
       </div>

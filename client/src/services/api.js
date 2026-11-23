@@ -16,6 +16,27 @@ export function resolveMediaUrl(url) {
   return url;
 }
 
+// Product photos uploaded by the admin are stored on the server as
+// "/api/uploads/<file>": turn them into full links for <img>.
+function withProductImages(product) {
+  if (!product || typeof product !== 'object') return product;
+  return {
+    ...product,
+    imageUrl: resolveMediaUrl(product.imageUrl) || product.imageUrl,
+    images: Array.isArray(product.images)
+      ? product.images.map((image) => resolveMediaUrl(image) || image)
+      : product.images,
+  };
+}
+
+function withProductImagesResponse(res) {
+  if (!res || res.data === undefined) return res;
+  return {
+    ...res,
+    data: Array.isArray(res.data) ? res.data.map(withProductImages) : withProductImages(res.data),
+  };
+}
+
 async function fetchJSON(endpoint, options = {}) {
   try {
     // Attach the signed-in customer's token (if any) so the server
@@ -42,6 +63,16 @@ async function fetchJSON(endpoint, options = {}) {
       error.status = res.status;
       error.code = body.code;
       error.data = body.data;
+
+      // The admin blocked / removed this account: sign out everywhere.
+      if (body.code === 'ACCOUNT_BLOCKED' && savedToken) {
+        try {
+          window.dispatchEvent(new CustomEvent('bhook:account-blocked', { detail: body.error }));
+        } catch {
+          // ignore
+        }
+      }
+
       throw error;
     }
     return await res.json();
@@ -57,22 +88,44 @@ export const api = {
     const params = new URLSearchParams();
     if (category && category !== 'all') params.append('category', category);
     if (search) params.append('search', search);
-    return fetchJSON(`/products?${params.toString()}`);
+    return fetchJSON(`/products?${params.toString()}`).then(withProductImagesResponse);
   },
   
-  getProductById: (id) => fetchJSON(`/products/${id}`),
+  getProductById: (id) => fetchJSON(`/products/${id}`).then(withProductImagesResponse),
 
   createProduct: (productData) => 
     fetchJSON('/products', {
       method: 'POST',
       body: JSON.stringify(productData),
-    }),
+    }).then(withProductImagesResponse),
 
   updateProduct: (id, updates) =>
     fetchJSON(`/products/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+    }).then(withProductImagesResponse),
+
+  // Admin: kitchen plan — which chef makes which item
+  // { productId: chefId | null }
+  saveKitchenPlan: (assignments) =>
+    fetchJSON('/products/kitchen-plan', {
+      method: 'PUT',
+      body: JSON.stringify({ assignments }),
+    }).then(withProductImagesResponse),
+
+  // Admin: let a chef also deliver orders
+  setChefCanDeliver: (id, canDeliver) =>
+    fetchJSON(`/staff/accounts/${id}/can-deliver`, {
+      method: 'PATCH',
+      body: JSON.stringify({ canDeliver }),
     }),
+
+  // Admin: order products are shown to customers (first id = first)
+  saveMenuOrder: (ids) =>
+    fetchJSON('/products/display-order', {
+      method: 'PUT',
+      body: JSON.stringify({ ids }),
+    }).then(withProductImagesResponse),
 
   deleteProduct: (id) =>
     fetchJSON(`/products/${id}`, {
@@ -109,6 +162,13 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
 
+  // Admin: give a food order to one chef (null = any chef on duty)
+  assignOrderChef: (id, chefId) =>
+    fetchJSON(`/orders/${id}/assign-chef`, {
+      method: 'PATCH',
+      body: JSON.stringify({ chefId }),
+    }),
+
   // Notifications
   getNotifications: () => fetchJSON('/notifications'),
 
@@ -137,6 +197,21 @@ export const api = {
 
   // Uses the saved token automatically.
   getCurrentUser: () => fetchJSON('/auth/me'),
+
+  logout: () => fetchJSON('/auth/logout', { method: 'POST' }),
+
+  // Admin: customer accounts (signed in / online, block, terminate)
+  getUsers: () => fetchJSON('/users'),
+  setUserBlocked: (id, blocked, reason) =>
+    fetchJSON(`/users/${id}/block`, {
+      method: 'PATCH',
+      body: JSON.stringify({ blocked, reason }),
+    }),
+  terminateUser: (id, reason) =>
+    fetchJSON(`/users/${id}/terminate`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 
   // Customer profile: { name, phone, email, hostel, roomNumber,
   // deliveryNote, currentPassword (needed for phone/email changes) }

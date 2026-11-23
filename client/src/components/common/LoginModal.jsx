@@ -220,7 +220,7 @@ export default function LoginModal({ onClose, onSuccess }) {
           {mode === "login" && (
             <div className="mt-6">
               <label className="mb-1 block text-sm font-semibold">
-                Phone, Email or Staff Login ID
+                Email or Phone
               </label>
 
               <input
@@ -229,7 +229,7 @@ export default function LoginModal({ onClose, onSuccess }) {
                 onChange={(e) =>
                   setIdentifier(e.target.value)
                 }
-                placeholder="Phone, email or e.g. BL-CHEF-001"
+                placeholder="Enter your email or phone"
                 required
                 autoComplete="username"
                 className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-brand-yellow"

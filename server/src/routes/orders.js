@@ -55,14 +55,116 @@ router.get('/my', shopper, (req, res) => {
   }
 });
 
+// Which chef makes an order:
+//   1. the admin picked a chef for this order → only that chef
+//   2. else the kitchen plan (chef per item) → those chefs; items with
+//      no planned chef are open to every chef on duty
+//   3. else every chef on duty
+const isChefsOrder = (order, user) => {
+  if (user?.role !== 'CHEF') return true;
+
+  if (order?.assignedChefId) {
+    return String(order.assignedChefId) === String(user.userId);
+  }
+
+  const planned = (order?.kitchenChefIds || []).map(String);
+  if (planned.length === 0) return true;
+  if ((order.items || []).some((item) => !item.chefId)) return true;
+
+  return planned.includes(String(user.userId));
+};
+
+const isForOtherChef = (order, user) => !isChefsOrder(order, user);
+
+const DELIVERY_STEPS = ['out_for_delivery', 'delivered'];
+
+// Chefs the admin also lets deliver orders.
+async function chefCanDeliver(user) {
+  if (user?.role !== 'CHEF') return false;
+  const result = await pool.query(
+    'SELECT can_deliver FROM staff_accounts WHERE id = $1',
+    [user.userId]
+  );
+  return Boolean(result.rows[0]?.can_deliver);
+}
+
+// Kitchen plan for a new food order: each item goes to the chef the
+// admin planned for it, if that chef is on duty today.
+async function planKitchen(items) {
+  const plannedIds = [...new Set(
+    items.map((item) => store.getProductById(item.productId)?.chefId).filter(Boolean).map(String)
+  )];
+
+  if (plannedIds.length === 0) {
+    return { items, chefs: [] };
+  }
+
+  const result = await pool.query(
+    `SELECT s.id::text AS id, s.login_id, s.full_name
+       FROM staff_accounts s
+       JOIN staff_shifts sh
+         ON sh.staff_id = s.id
+        AND sh.work_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+      WHERE s.role = 'CHEF' AND s.is_active = TRUE AND s.id::text = ANY($1::text[])`,
+    [plannedIds]
+  );
+
+  const onDuty = new Map(result.rows.map((row) => [row.id, row]));
+
+  const plannedItems = items.map((item) => {
+    const chefId = String(store.getProductById(item.productId)?.chefId || '');
+    const chef = onDuty.get(chefId);
+    return chef
+      ? { ...item, chefId: chef.id, chefName: chef.full_name, chefLoginId: chef.login_id }
+      : { ...item, chefId: null };
+  });
+
+  const usedIds = new Set(plannedItems.map((item) => item.chefId).filter(Boolean));
+
+  return {
+    items: plannedItems,
+    chefs: [...usedIds].map((id) => ({
+      id,
+      name: onDuty.get(id).full_name,
+      loginId: onDuty.get(id).login_id
+    }))
+  };
+}
+
 // GET /api/orders (Admin / on-duty kitchen & delivery staff)
-router.get('/', kitchenAccess, (req, res) => {
+router.get('/', kitchenAccess, async (req, res) => {
   try {
-    const orders = store.getOrders();
+    if (req.user.role !== 'CHEF') {
+      const orders = store.getOrders();
+      return res.json({ success: true, count: orders.length, data: orders });
+    }
+
+    // Chefs: their kitchen orders, plus food orders to deliver when
+    // the admin also made them a delivery partner.
+    const canDeliver = await chefCanDeliver(req.user);
+    const me = String(req.user.userId);
+
+    const orders = store
+      .getOrders()
+      .map((order) => ({
+        ...order,
+        kitchenForMe: isChefsOrder(order, req.user),
+        assignedToMe:
+          String(order.assignedChefId || '') === me ||
+          (!order.assignedChefId && (order.kitchenChefIds || []).map(String).includes(me)),
+        deliveryByMe: String(order.deliveryPartnerId || '') === me
+      }))
+      .filter((order) =>
+        order.kitchenForMe ||
+        (canDeliver &&
+          order.orderType !== 'zuxu' &&
+          ['ready', 'out_for_delivery', 'delivered'].includes(order.status))
+      );
 
     res.json({
       success: true,
       count: orders.length,
+      canDeliver,
       data: orders
     });
   } catch (err) {
@@ -111,6 +213,66 @@ router.delete('/:id', requireRole('ADMIN'), (req, res) => {
   } catch (err) {
     console.error('DELETE ORDER ERROR:', err);
     res.status(500).json({ success: false, error: 'Could not delete the order.' });
+  }
+});
+
+// PATCH /api/orders/:id/assign-chef  { chefId }  (admin)
+// Give a food order to one chef (chefId: null = any chef on duty).
+router.patch('/:id/assign-chef', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const order = store.getOrderById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    if (order.orderType === 'zuxu') {
+      return res.status(400).json({ success: false, error: 'Zuxu orders are not made by the kitchen.' });
+    }
+
+    if (['delivered', 'cancelled'].includes(order.status)) {
+      return res.status(409).json({ success: false, error: 'This order is already finished.' });
+    }
+
+    const chefId = req.body?.chefId ? String(req.body.chefId) : null;
+
+    if (!chefId) {
+      const updated = store.updateOrderFields(order.id, {
+        assignedChefId: null,
+        assignedChefLoginId: null,
+        assignedChefName: null,
+        assignedChefAt: null
+      });
+      return res.json({ success: true, message: 'Order is open to every chef on duty.', data: updated });
+    }
+
+    const result = await pool.query(
+      `SELECT id, login_id, full_name, is_active
+         FROM staff_accounts
+        WHERE id::text = $1 AND role = 'CHEF'`,
+      [chefId]
+    );
+    const chef = result.rows[0];
+
+    if (!chef) {
+      return res.status(404).json({ success: false, error: 'Chef not found.' });
+    }
+
+    if (!chef.is_active) {
+      return res.status(409).json({ success: false, error: 'This chef account is disabled.' });
+    }
+
+    const updated = store.updateOrderFields(order.id, {
+      assignedChefId: String(chef.id),
+      assignedChefLoginId: chef.login_id,
+      assignedChefName: chef.full_name,
+      assignedChefAt: new Date().toISOString()
+    });
+
+    res.json({ success: true, message: `Order sent to ${chef.full_name} (${chef.login_id}).`, data: updated });
+  } catch (err) {
+    console.error('ASSIGN CHEF ERROR:', err);
+    res.status(500).json({ success: false, error: 'Could not assign the chef.' });
   }
 });
 
@@ -285,7 +447,12 @@ router.post('/', shopper, async (req, res) => {
     // CREATE ORDER
     // ============================================
 
-    const createdOrder = store.createOrder({
+    // Kitchen plan: send each item to the chef the admin chose for it.
+    const kitchen = orderType === 'food'
+      ? await planKitchen(priced.items)
+      : { items: priced.items, chefs: [] };
+
+    let createdOrder = store.createOrder({
       userId: req.user.userId,
       orderType,
       customerName,
@@ -296,12 +463,19 @@ router.post('/', shopper, async (req, res) => {
       deliveryNotes,
 
       // Server-calculated prices only
-      items: priced.items,
+      items: kitchen.items,
       subtotal: priced.subtotal,
       deliveryFee: priced.deliveryFee,
       packagingFee: priced.packagingFee,
       total: priced.total
     });
+
+    if (kitchen.chefs.length > 0) {
+      createdOrder = store.updateOrderFields(createdOrder.id, {
+        kitchenChefIds: kitchen.chefs.map((chef) => chef.id),
+        kitchenChefs: kitchen.chefs
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -357,8 +531,21 @@ router.patch('/:id/status', kitchenAccess, async (req, res) => {
       });
     }
 
+    // Chef who also delivers: may move any food order on its way.
+    const deliveringChef =
+      DELIVERY_STEPS.includes(status) && (await chefCanDeliver(req.user));
+
+    // The admin gave this order to a different chef.
+    if (!deliveringChef && isForOtherChef(existing, req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: `This order was given to ${existing.assignedChefLoginId || 'another chef'}.`
+      });
+    }
+
     if (
       STAFF_ROLES.includes(req.user.role) &&
+      !deliveringChef &&
       !STATUS_PERMISSIONS[req.user.role].includes(status)
     ) {
       return res.status(403).json({
@@ -373,7 +560,7 @@ router.patch('/:id/status', kitchenAccess, async (req, res) => {
     // mark it delivered, and its delivery charge counts as their earning.
     // ============================================
 
-    const isDeliveryPartner = req.user.role === 'DELIVERY';
+    const isDeliveryPartner = req.user.role === 'DELIVERY' || deliveringChef;
 
     if (
       isDeliveryPartner &&

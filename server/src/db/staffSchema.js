@@ -5,6 +5,17 @@ export async function ensureUserProfileSchema() {
   await pool.query(`
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS delivery_note TEXT;
+
+    -- Who is signed in / using the app (shown to the admin)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_logout_at TIMESTAMPTZ;
+
+    -- Admin moderation: blocked (can be undone) or terminated (permanent)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS terminated_at TIMESTAMPTZ;
   `);
 }
 
@@ -63,5 +74,9 @@ export async function ensureStaffSchema() {
 
     ALTER TABLE staff_accounts
       ADD COLUMN IF NOT EXISTS hostel VARCHAR(20);
+
+    -- A chef the admin also allows to deliver orders.
+    ALTER TABLE staff_accounts
+      ADD COLUMN IF NOT EXISTS can_deliver BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 }

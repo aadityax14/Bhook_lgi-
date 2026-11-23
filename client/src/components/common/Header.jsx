@@ -16,6 +16,7 @@ import { visibleUnreadCount } from '../../utils/notifications';
 import LoginModal from './LoginModal';
 import { api } from '../../services/api';
 import MyOrdersModal from '../orders/MyOrdersModal';
+import { useBackStep } from '../../utils/backNavigation';
 
 export default function Header({
   onOpenCart,
@@ -52,7 +53,13 @@ export default function Header({
   const [showProfile, setShowProfile] = useState(false);
   const [showMyOrders, setShowMyOrders] = useState(false);
 
-  const HOSTELS = ['GS12', 'GS11', 'GH1', 'GH3', 'GH4', 'Other'];
+  // Phone Back button closes these popups instead of leaving the site.
+  useBackStep(showLocationModal, () => setShowLocationModal(false));
+  useBackStep(showLogin, () => setShowLogin(false));
+  useBackStep(showProfile, () => setShowProfile(false));
+  useBackStep(showMyOrders, () => setShowMyOrders(false));
+
+  const HOSTELS = ['GS12', 'GS11', 'GH1', 'GH2', 'GH3', 'GH4', 'Other'];
 
   return (
     <>

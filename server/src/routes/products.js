@@ -2,6 +2,8 @@
 import express from 'express';
 import { store } from '../db/store.js';
 import { requireRole } from '../middleware/auth.js';
+import { pool } from '../db/postgres.js';
+import { saveImage, deleteImages, isUploadedImageUrl, UploadError } from '../services/uploads.js';
 
 const router = express.Router();
 
@@ -40,8 +42,73 @@ const ADVANCED_PRODUCT_FIELDS = [
   'returnPolicy',
   'estimatedDelivery',
   'seoTitle',
-  'seoDescription'
+  'seoDescription',
+  // Position on the customer menu (1 = shown first). Set by the admin.
+  'displayOrder'
 ];
+
+// =============================================================
+// PRODUCT PHOTOS
+// New photos arrive from the admin as compressed data URLs. They
+// are saved as files under server/uploads. When a photo is removed
+// or replaced (or the product is deleted) its old file is deleted
+// for good, so only the current photos are kept.
+// =============================================================
+
+const PRODUCT_IMAGE_MAX_BYTES = 3 * 1024 * 1024; // 3 MB per photo
+
+// "http://host:5000/api/uploads/x.jpg" → "/api/uploads/x.jpg"
+const toStoredImage = (value) => {
+  const text = String(value || '').trim();
+  const match = /^https?:\/\/[^/]+(\/api\/uploads\/[^/?#]+)$/i.exec(text);
+  return match && isUploadedImageUrl(match[1]) ? match[1] : text;
+};
+
+// Replace data-URL photos in `fields` with saved file URLs.
+// `created` collects new files (deleted again if saving fails).
+function storeProductImages(fields, created) {
+  const saved = new Map(); // same photo sent twice → one file
+
+  const convert = (value) => {
+    const text = toStoredImage(value);
+
+    if (!text.startsWith('data:image/')) return text;
+
+    if (!saved.has(text)) {
+      const url = saveImage(text, { maxBytes: PRODUCT_IMAGE_MAX_BYTES });
+      created.push(url);
+      saved.set(text, url);
+    }
+
+    return saved.get(text);
+  };
+
+  if (Array.isArray(fields.images)) {
+    fields.images = fields.images.map(convert).filter(Boolean);
+  }
+
+  if (typeof fields.imageUrl === 'string' && fields.imageUrl.trim()) {
+    fields.imageUrl = convert(fields.imageUrl);
+  }
+}
+
+// Uploaded photo files a product uses.
+const uploadedImagesOf = (product) =>
+  [product?.imageUrl, ...(Array.isArray(product?.images) ? product.images : [])]
+    .filter(isUploadedImageUrl);
+
+// Delete photo files that no product or banner uses any more.
+function deleteUnusedImages(urls) {
+  if (!urls.length) return;
+
+  const inUse = new Set(store.getProducts().flatMap(uploadedImagesOf));
+
+  for (const banner of store.getBanners() || []) {
+    if (isUploadedImageUrl(banner?.image)) inUse.add(banner.image);
+  }
+
+  deleteImages([...new Set(urls)].filter((url) => !inUse.has(url)));
+}
 
 const isObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -205,8 +272,97 @@ const validateAdvancedFields = (data) => {
     }
   }
 
+  // Menu position: whole number 1–9999, or null to clear it
+  if (data.displayOrder !== undefined) {
+    if (data.displayOrder === null || data.displayOrder === '') {
+      data.displayOrder = null;
+    } else {
+      const order = Number(data.displayOrder);
+
+      if (!Number.isInteger(order) || order < 1 || order > 9999) {
+        return 'Display order must be a whole number from 1 to 9999';
+      }
+
+      data.displayOrder = order;
+    }
+  }
+
   return null;
 };
+
+
+// PUT /api/products/kitchen-plan  { assignments: { productId: chefId | null } }
+// (admin) Which chef makes which item. One chef can make many items;
+// null = any chef on duty.
+router.put('/kitchen-plan', adminOnly, async (req, res) => {
+  try {
+    const assignments = req.body?.assignments;
+
+    if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments)) {
+      return res.status(400).json({ success: false, error: 'assignments must be an object' });
+    }
+
+    const clean = {};
+
+    for (const [productId, chefId] of Object.entries(assignments)) {
+      if (!store.getProductById(productId)) {
+        return res.status(400).json({ success: false, error: 'Some products no longer exist. Refresh and try again.' });
+      }
+      clean[productId] = chefId ? String(chefId) : null;
+    }
+
+    const chefIds = [...new Set(Object.values(clean).filter(Boolean))];
+
+    if (chefIds.length > 0) {
+      const result = await pool.query(
+        `SELECT id::text AS id FROM staff_accounts
+          WHERE role = 'CHEF' AND is_active = TRUE AND id::text = ANY($1::text[])`,
+        [chefIds]
+      );
+      const found = new Set(result.rows.map((row) => row.id));
+
+      if (chefIds.some((id) => !found.has(id))) {
+        return res.status(400).json({ success: false, error: 'One of the chefs is disabled or no longer exists.' });
+      }
+    }
+
+    store.setKitchenPlan(clean);
+
+    res.json({ success: true, message: 'Kitchen plan saved', data: store.getProducts() });
+  } catch (err) {
+    console.error('KITCHEN PLAN ERROR:', err);
+    res.status(500).json({ success: false, error: 'Could not save the kitchen plan' });
+  }
+});
+
+
+// PUT /api/products/display-order  { ids: [...] }  (admin)
+// The admin's chosen order for the customer menu: the first id is
+// shown first. Products not in the list keep their place after these.
+router.put('/display-order', adminOnly, (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? [...new Set(req.body.ids.map(String))]
+      : null;
+
+    if (!ids || ids.length > 1000) {
+      return res.status(400).json({ success: false, error: 'ids must be a list of product ids' });
+    }
+
+    const unknown = ids.filter((id) => !store.getProductById(id));
+
+    if (unknown.length > 0) {
+      return res.status(400).json({ success: false, error: 'Some products no longer exist. Refresh and try again.' });
+    }
+
+    store.setDisplayOrder(ids);
+
+    res.json({ success: true, message: 'Menu order saved', data: store.getProducts() });
+  } catch (err) {
+    console.error('DISPLAY ORDER ERROR:', err);
+    res.status(500).json({ success: false, error: 'Could not save the menu order' });
+  }
+});
 
 
 // GET /api/categories
@@ -331,6 +487,37 @@ router.post('/', adminOnly, (req, res) => {
 
     if (stockQuantity !== undefined) {
       const result = validateStock(stockQuantity, 'Stock');
+      if (!result.valid) {
+        return res.status(400).json({ success: false, error: result.error });
+      }
+    }
+
+    if (stockHalfUnits !== undefined) {
+      const result = validateStock(stockHalfUnits, 'Bhel stock');
+      if (!result.valid) {
+        return res.status(400).json({ success: false, error: result.error });
+      }
+    }
+
+    // Save new photos as files (only after all checks passed).
+    const createdImages = [];
+    const imageFields = { images: advancedFields.images, imageUrl };
+
+    try {
+      storeProductImages(imageFields, createdImages);
+    } catch (error) {
+      if (error instanceof UploadError) {
+        return res.status(400).json({ success: false, error: error.message });
+      }
+      throw error;
+    }
+
+    if (imageFields.images !== undefined) {
+      advancedFields.images = imageFields.images;
+    }
+
+    if (stockQuantity !== undefined) {
+      const result = validateStock(stockQuantity, 'Stock');
 
       if (!result.valid) {
         return res.status(400).json({
@@ -364,8 +551,8 @@ router.post('/', adminOnly, (req, res) => {
       description: description || '',
 
       imageUrl:
-        typeof imageUrl === 'string' && imageUrl.trim()
-          ? imageUrl.trim()
+        typeof imageFields.imageUrl === 'string' && imageFields.imageUrl.trim()
+          ? imageFields.imageUrl.trim()
           : advancedFields.images?.[0] || DEFAULT_IMAGE,
 
       isCooked: Boolean(isCooked),
@@ -383,7 +570,14 @@ router.post('/', adminOnly, (req, res) => {
       stockHalfUnits: cleanStockHalfUnits
     };
 
-    const newProduct = store.createProduct(productData);
+    let newProduct;
+
+    try {
+      newProduct = store.createProduct(productData);
+    } catch (error) {
+      deleteImages(createdImages);
+      throw error;
+    }
 
     res.status(201).json({
       success: true,
@@ -539,17 +733,43 @@ router.patch('/:id', adminOnly, (req, res) => {
     // Use normalized advanced values.
     Object.assign(updates, advancedFields);
 
-    const updated = store.updateProduct(
-      req.params.id,
-      updates
-    );
+    // New photos → files. Remember the old ones so any photo that
+    // was removed or replaced can be deleted afterwards.
+    const previousImages = uploadedImagesOf(product);
+    const createdImages = [];
+
+    try {
+      storeProductImages(updates, createdImages);
+    } catch (error) {
+      if (error instanceof UploadError) {
+        return res.status(400).json({ success: false, error: error.message });
+      }
+      throw error;
+    }
+
+    let updated;
+
+    try {
+      updated = store.updateProduct(
+        req.params.id,
+        updates
+      );
+    } catch (error) {
+      deleteImages(createdImages);
+      throw error;
+    }
 
     if (!updated) {
+      deleteImages(createdImages);
       return res.status(404).json({
         success: false,
         error: 'Product not found'
       });
     }
+
+    // Permanently delete photos this product no longer shows.
+    const currentImages = new Set(uploadedImagesOf(updated));
+    deleteUnusedImages(previousImages.filter((url) => !currentImages.has(url)));
 
     res.json({
       success: true,
@@ -570,7 +790,13 @@ router.patch('/:id', adminOnly, (req, res) => {
 // DELETE /api/products/:id
 router.delete('/:id', adminOnly, (req, res) => {
   try {
+    const photos = uploadedImagesOf(store.getProductById(req.params.id));
     const success = store.deleteProduct(req.params.id);
+
+    // The product's photo files go too.
+    if (success) {
+      deleteUnusedImages(photos);
+    }
 
     if (!success) {
       return res.status(404).json({

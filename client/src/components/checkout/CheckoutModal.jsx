@@ -6,7 +6,7 @@ import { useOrder } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import LoginModal from '../common/LoginModal';
 
-const HOSTEL_OPTIONS = ['GH1', 'GH3', 'GH4', 'GH11', 'GH12', 'BH1', 'BH2', 'Other'];
+const HOSTEL_OPTIONS = ['GH1', 'GH2', 'GH3', 'GH4', 'GH11', 'GS12', 'BH1', 'BH2', 'Other'];
 
 export default function CheckoutModal({ isOpen, onClose, onOrderPlaced }) {
   const { items, subtotal, clearCart, applyServerPrices, feeSettings, refreshFeeSettings, orderType } = useCart();

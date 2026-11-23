@@ -113,6 +113,19 @@ export function AuthProvider({ children }) {
     };
   }, [clearSession, saveUser]);
 
+  // The admin blocked or removed this account → sign out right away.
+  useEffect(() => {
+    const handleBlocked = (event) => {
+      // Several requests can fail at once: react only the first time.
+      if (!localStorage.getItem('bhook_token')) return;
+      clearSession();
+      window.alert(event.detail || 'Your account has been blocked by the admin.');
+    };
+
+    window.addEventListener('bhook:account-blocked', handleBlocked);
+    return () => window.removeEventListener('bhook:account-blocked', handleBlocked);
+  }, [clearSession]);
+
   // Called after successful login or account creation.
   const login = (userData, token) => {
     if (!userData || !token) {
@@ -133,6 +146,10 @@ export function AuthProvider({ children }) {
 
   // Sign out the current user.
   const logout = () => {
+    // Let the server know (keeps the admin's "signed in" count right).
+    if (localStorage.getItem('bhook_token')) {
+      api.logout().catch(() => {});
+    }
     clearSession();
   };
 

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20) UNIQUE NOT NULL,
     email VARCHAR(150),
-    hostel VARCHAR(20) NOT NULL, -- GH1, GH3, GH4, GH11, GH12, Other
+    hostel VARCHAR(20) NOT NULL, -- GH1, GH2, GH3, GH4, GH11, GS12, Other
     room_number VARCHAR(20) NOT NULL,
     role VARCHAR(30) DEFAULT 'CUSTOMER', -- 'CUSTOMER', 'SELLER', 'DELIVERY_PARTNER', 'OWNER_ADMIN'
     seller_id VARCHAR(50), -- set if role === 'SELLER'

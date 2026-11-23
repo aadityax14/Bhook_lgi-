@@ -5,7 +5,10 @@ import ChargesSettings from './ChargesSettings';
 import KitchenStatusCard from './KitchenStatusCard';
 import OrderHistoryControls from './OrderHistoryControls';
 import HostelAvailabilityPicker from './HostelAvailabilityPicker';
-import React, { useEffect, useMemo, useState } from 'react';
+import UsersManager from './UsersManager';
+import MenuOrderManager from './MenuOrderManager';
+import KitchenPlan from './KitchenPlan';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -21,10 +24,12 @@ import {
   Upload,
   AlertCircle,
   Check,
+  Users,
 } from 'lucide-react';
 
 import { api } from '../../services/api';
 import { useOrder } from '../../context/OrderContext';
+import { pushBackStep, useBackStep } from '../../utils/backNavigation';
 import PriceOptionsEditor, {
   toPriceOptionRows,
   cleanPriceOptions,
@@ -166,7 +171,22 @@ export default function AdminDashboard({
     fetchOrders,
   } = useOrder();
 
-  const [activeTab, setActiveTab] = useState('orders');
+  const [activeTab, setActiveTabState] = useState('orders');
+
+  // Switching tabs adds a Back step (phone Back → previous tab).
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const setActiveTab = useCallback((tab) => {
+    const previous = activeTabRef.current;
+    if (previous === tab) return;
+    pushBackStep(() => setActiveTabState(previous));
+    setActiveTabState(tab);
+  }, []);
+
+  // Chefs the admin can give an order to (active chef accounts)
+  const [chefs, setChefs] = useState([]);
+  const [assigningOrderId, setAssigningOrderId] = useState(null);
 
   const [products, setProducts] = useState([]);
 
@@ -242,6 +262,10 @@ export default function AdminDashboard({
   const [editImageLoading, setEditImageLoading] =
     useState(false);
 
+  // Phone Back button closes the product popups first.
+  useBackStep(Boolean(editingProduct), () => setEditingProduct(null));
+  useBackStep(showAddProduct, () => setShowAddProduct(false));
+
 
   // ==========================================================
   // TOAST
@@ -304,6 +328,43 @@ export default function AdminDashboard({
 
 
   // ==========================================================
+  // CHEFS (for "send this order to a chef")
+  // ==========================================================
+
+  const fetchChefs = async () => {
+    try {
+      const response = await api.getStaffAccounts();
+      setChefs(
+        (response?.data || []).filter(
+          (account) => account.role === 'CHEF' && account.is_active
+        )
+      );
+    } catch (error) {
+      console.warn('Could not load chefs:', error.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchChefs();
+    const interval = setInterval(fetchChefs, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleAssignChef = async (order, chefId) => {
+    try {
+      setAssigningOrderId(order.id);
+      const response = await api.assignOrderChef(order.id, chefId || null);
+      await fetchOrders();
+      showToast('success', response?.message || 'Chef updated ✓');
+    } catch (error) {
+      showToast('error', error.message || 'Could not assign the chef');
+    } finally {
+      setAssigningOrderId(null);
+    }
+  };
+
+
+  // ==========================================================
   // AUTO REFRESH
   // ==========================================================
 
@@ -359,6 +420,15 @@ export default function AdminDashboard({
     (product) =>
       product.storeId === 'store-zuxu' ||
       product.categoryId === 'zuxu'
+  );
+}, [products]);
+
+// Bhook_Lgi menu (Bhel + other food), in the order customers see it
+const menuProducts = useMemo(() => {
+  return products.filter(
+    (product) =>
+      product.storeId !== 'store-zuxu' &&
+      String(product.categoryId || '').toLowerCase() !== 'zuxu'
   );
 }, [products]);
 
@@ -1479,6 +1549,12 @@ if (order.status === 'delivered') {
                     </span>
                   )}
 
+                  {item.chefName && !order.assignedChefId && (
+                    <span className="text-[11px] font-bold text-yellow-700 ml-2">
+                      👨‍🍳 {item.chefName}
+                    </span>
+                  )}
+
                 </div>
 
                 <span className="font-bold">
@@ -1529,6 +1605,50 @@ if (order.status === 'delivered') {
           )}
 
         </div>
+
+
+        {/* CHEF (food orders): admin picks which chef makes it */}
+
+        {order.orderType !== 'zuxu' && (
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2 rounded-2xl bg-yellow-50 border border-yellow-100 px-3 py-2.5">
+            <span className="text-xs font-black text-gray-700 flex items-center gap-1.5">
+              <ChefHat size={15} /> Chef:
+            </span>
+
+            {['delivered', 'cancelled'].includes(order.status) ? (
+              <span className="text-xs font-bold text-gray-600">
+                {order.assignedChefName
+                  ? `${order.assignedChefName} (${order.assignedChefLoginId})`
+                  : 'Any chef on duty'}
+              </span>
+            ) : (
+              <select
+                value={order.assignedChefId || ''}
+                disabled={assigningOrderId === order.id}
+                onChange={(event) => handleAssignChef(order, event.target.value)}
+                className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-bold outline-none focus:ring-2 focus:ring-brand-yellow disabled:opacity-50"
+              >
+                <option value="">Any chef on duty</option>
+                {chefs.map((chef) => (
+                  <option key={chef.id} value={chef.id}>
+                    {chef.full_name} ({chef.login_id}){chef.on_duty_today ? ' · on duty' : ' · off duty'}
+                  </option>
+                ))}
+                {order.assignedChefId && !chefs.some((chef) => String(chef.id) === String(order.assignedChefId)) && (
+                  <option value={order.assignedChefId}>
+                    {order.assignedChefName || 'Chef'} ({order.assignedChefLoginId || 'disabled'})
+                  </option>
+                )}
+              </select>
+            )}
+
+            {!order.assignedChefId && (order.kitchenChefs || []).length > 0 && (
+              <span className="text-[11px] font-bold text-yellow-800">
+                Kitchen plan: {order.kitchenChefs.map((chef) => chef.name).join(', ')}
+              </span>
+            )}
+          </div>
+        )}
 
 
         {/* ACTION */}
@@ -2044,6 +2164,19 @@ if (order.status === 'delivered') {
               Delivery & Packing
             </button>
 
+            {/* KITCHEN PLAN: which chef makes what, chefs who deliver */}
+            <button
+              onClick={() => setActiveTab('kitchen')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'kitchen'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <ChefHat size={17} />
+              Kitchen Plan
+            </button>
+
             {/* STAFF: duty, applications, logins */}
             <button
               onClick={() => setActiveTab('staff')}
@@ -2055,6 +2188,19 @@ if (order.status === 'delivered') {
             >
               <ChefHat size={17} />
               Staff
+            </button>
+
+            {/* USERS: signed-in customers, block / terminate */}
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap ${
+                activeTab === 'users'
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <Users size={17} />
+              Users
             </button>
 
             
@@ -2231,6 +2377,18 @@ if (order.status === 'delivered') {
 
             {/* KITCHEN OPEN / CLOSED (Bhook_Lgi only — not Zuxu) */}
             <KitchenStatusCard />
+
+
+            {/* WHICH PRODUCTS CUSTOMERS SEE FIRST */}
+            <MenuOrderManager
+              products={menuProducts}
+              showToast={showToast}
+              onSaved={(updatedProducts) => {
+                if (Array.isArray(updatedProducts)) {
+                  setProducts(updatedProducts);
+                }
+              }}
+            />
 
 
             {/* INVENTORY HEADER */}
@@ -2868,6 +3026,24 @@ if (order.status === 'delivered') {
         {/* STAFF TAB */}
         {activeTab === 'staff' && (
           <StaffManager />
+        )}
+
+        {/* KITCHEN PLAN TAB */}
+        {activeTab === 'kitchen' && (
+          <KitchenPlan
+            products={menuProducts}
+            showToast={showToast}
+            onSaved={(updatedProducts) => {
+              if (Array.isArray(updatedProducts)) {
+                setProducts(updatedProducts);
+              }
+            }}
+          />
+        )}
+
+        {/* USERS TAB */}
+        {activeTab === 'users' && (
+          <UsersManager />
         )}
 
       </main>

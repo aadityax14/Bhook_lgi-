@@ -11,6 +11,7 @@ import { ensureStaffSchema, ensureUserProfileSchema } from './db/staffSchema.js'
 import zuxuRouter from './routes/zuxu.js';
 import bannersRouter from './routes/banners.js';
 import settingsRouter from './routes/settings.js';
+import usersRouter from './routes/users.js';
 import { UPLOAD_DIR } from './services/uploads.js';
 
 dotenv.config();
@@ -56,6 +57,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/zuxu', zuxuRouter);
 app.use('/api/banners', bannersRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/users', usersRouter);
 
 // Uploaded photos (custom orders, reviews, banners).
 // Served as plain images only — never run or sniffed as anything else.

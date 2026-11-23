@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { api } from '../../services/api';
 import { PhotoPicker, Stars } from './ZuxuShared';
+import { useBackStep } from '../../utils/backNavigation';
 
 const LABELS = ['', 'Not happy', 'Could be better', 'Good', 'Really nice', 'Love it!'];
 
@@ -11,6 +12,9 @@ export default function ReviewModal({ order, item, onClose, onSaved }) {
   const [images, setImages] = useState([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Phone Back button closes this popup.
+  useBackStep(true, onClose);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
