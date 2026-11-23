@@ -28,6 +28,7 @@ export default function WorkWithBhookLgi({ onClose }) {
     studentId: '',
     daysPerWeek: '',
     hostel: '',
+    otherHostel: '',
     password: '',
     confirmPassword: '',
     confirmation: false
@@ -96,14 +97,25 @@ export default function WorkWithBhookLgi({ onClose }) {
       return;
     }
 
+    // "Other" → use the hostel name they typed.
+    const hostel = formData.hostel === 'Other'
+      ? formData.otherHostel.trim()
+      : formData.hostel;
+
+    if (!hostel) {
+      setError('Please type your hostel name.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
       // eslint-disable-next-line no-unused-vars
-      const { confirmPassword, confirmation, ...application } = formData;
+      const { confirmPassword, confirmation, otherHostel, ...application } = formData;
 
       const response = await api.submitStaffApplication({
         ...application,
+        hostel,
         role: selectedRole
       });
 
@@ -491,6 +503,20 @@ export default function WorkWithBhookLgi({ onClose }) {
                       <option key={h} value={h}>{h}</option>
                     ))}
                   </select>
+
+                  {formData.hostel === 'Other' && (
+                    <input
+                      type="text"
+                      name="otherHostel"
+                      value={formData.otherHostel}
+                      onChange={handleChange}
+                      required
+                      maxLength={20}
+                      autoFocus
+                      className="mt-2 w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-yellow-400"
+                      placeholder="Type your hostel name"
+                    />
+                  )}
                 </div>
 
                 <div>

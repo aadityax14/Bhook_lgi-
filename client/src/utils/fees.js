@@ -14,7 +14,7 @@ export const DEFAULT_FEE_SETTINGS = {
 };
 
 // Hostels used across the app (customers, chefs, delivery partners).
-export const HOSTELS = ['GH1', 'GH3', 'GH4', 'GH11', 'GH12', 'GS11', 'GS12', 'BH1', 'BH2', 'Other'];
+export const HOSTELS = ['GH1', 'GH2', 'GH3', 'GH4', 'GH11', 'GS11', 'GS12', 'BH1', 'BH2', 'Other'];
 
 // "gh 2" → "GH2" (same as the server)
 const norm = (value) => String(value || '').replace(/\s+/g, '').toUpperCase();

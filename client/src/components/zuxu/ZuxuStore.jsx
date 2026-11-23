@@ -16,6 +16,7 @@ import { useCart } from '../../context/CartContext';
 import CustomOrderSection from './CustomOrderSection';
 import { Stars } from './ZuxuShared';
 import LoginModal from '../common/LoginModal';
+import { useBackStep } from '../../utils/backNavigation';
 
 const PRICE_FILTERS = [
   { id: 'under99', label: 'Under ₹99' },
@@ -35,6 +36,13 @@ export default function ZuxuStore({ onBack }) {
   const [showSignIn, setShowSignIn] = useState(false);
 
   const { addToCart } = useCart();
+
+  // Phone Back button closes these popups first.
+  useBackStep(Boolean(selectedProduct), () => {
+    setSelectedProduct(null);
+    loadRatings();
+  });
+  useBackStep(showSignIn, () => setShowSignIn(false));
 
   // Star ratings for product cards
   const loadRatings = async () => {
@@ -195,40 +203,6 @@ export default function ZuxuStore({ onBack }) {
 
           </div>
         </section>
-
-        {/* STORE INFO */}
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-soft p-4 mb-6">
-
-          <div className="flex items-center justify-between gap-3">
-
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-brand-yellow flex items-center justify-center text-2xl">
-                🧶
-              </div>
-
-              <div>
-                <h2 className="font-black text-brand-black">Zuxu</h2>
-                <p className="text-xs text-gray-500">
-                  Handmade Gifts & Accessories
-                </p>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-xs font-bold text-emerald-600">
-                ● Open
-              </div>
-
-              <div className="text-[10px] text-gray-400">
-                Student Seller
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        {/* CUSTOM ORDERS */}
-        <CustomOrderSection onOpenSignIn={() => setShowSignIn(true)} />
 
         {/* FEATURED PRODUCTS */}
         {!loading && !error && products.some(product => product.isFeatured) && (
@@ -517,6 +491,11 @@ export default function ZuxuStore({ onBack }) {
           <p className="text-xs text-gray-500 mt-1">
             Zuxu is growing its handmade collection.
           </p>
+        </div>
+
+        {/* CUSTOM ORDERS (bottom of the page) */}
+        <div className="mt-6">
+          <CustomOrderSection onOpenSignIn={() => setShowSignIn(true)} />
         </div>
 
       </main>

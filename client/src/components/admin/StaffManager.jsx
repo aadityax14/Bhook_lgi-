@@ -155,8 +155,17 @@ export default function StaffManager() {
     }
   };
 
+  // Row currently typing an "Other" hostel name: { id, text }
+  const [otherHostel, setOtherHostel] = useState(null);
+
   const changeHostel = async (account, hostel) => {
+    hostel = String(hostel || '').trim();
     if (!hostel) return;
+    if (hostel === 'Other') {
+      setOtherHostel({ id: account.id, text: '' });
+      return;
+    }
+    setOtherHostel(null);
     setWorkingId(account.id);
     setMessage(null);
     try {
@@ -402,6 +411,43 @@ export default function StaffManager() {
                           <option key={h} value={h}>{h}</option>
                         ))}
                       </select>
+
+                      {otherHostel?.id === account.id && (
+                        <form
+                          className="mt-1 flex gap-1"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (otherHostel.text.trim() && otherHostel.text.trim() !== 'Other') {
+                              changeHostel(account, otherHostel.text);
+                            }
+                          }}
+                        >
+                          <input
+                            type="text"
+                            value={otherHostel.text}
+                            onChange={(e) => setOtherHostel({ id: account.id, text: e.target.value })}
+                            maxLength={20}
+                            autoFocus
+                            placeholder="Type hostel"
+                            aria-label={`Other hostel for ${account.full_name}`}
+                            className="w-24 rounded-lg border px-2 py-1 text-xs font-bold"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!otherHostel.text.trim() || workingId === account.id}
+                            className="rounded-lg bg-brand-black px-2 py-1 text-[10px] font-black text-white disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOtherHostel(null)}
+                            className="rounded-lg border px-2 py-1 text-[10px] font-black"
+                          >
+                            ✕
+                          </button>
+                        </form>
+                      )}
                     </td>
                     <td className="px-4 py-3">{account.mobile}</td>
                     <td className="px-4 py-3">

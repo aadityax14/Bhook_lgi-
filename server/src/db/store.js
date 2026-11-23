@@ -704,7 +704,54 @@ if (product.isActive === undefined) {
       );
     }
 
-    return list;
+    // The admin's menu order first (displayOrder 1, 2, 3…), then
+    // every other product in its usual order.
+    const rank = (product) => {
+      const order = Number(product.displayOrder);
+      return product.displayOrder != null && Number.isFinite(order) ? order : Infinity;
+    };
+
+    return list
+      .map((product, index) => ({ product, index }))
+      .sort((a, b) => (rank(a.product) - rank(b.product)) || (a.index - b.index))
+      .map(({ product }) => product);
+  }
+
+  // Kitchen plan: which chef makes which product.
+  // assignments: { productId: chefId | null }
+  setKitchenPlan(assignments) {
+    const now = new Date().toISOString();
+
+    for (const product of this.data.products) {
+      if (!Object.prototype.hasOwnProperty.call(assignments, product.id)) continue;
+
+      const next = assignments[product.id] ? String(assignments[product.id]) : null;
+
+      if ((product.chefId ?? null) !== next) {
+        product.chefId = next;
+        product.updatedAt = now;
+      }
+    }
+
+    this.persist();
+  }
+
+  // ids: products in the order customers should see them.
+  // Products not listed lose any previous position.
+  setDisplayOrder(ids) {
+    const position = new Map(ids.map((id, index) => [String(id), index + 1]));
+    const now = new Date().toISOString();
+
+    for (const product of this.data.products) {
+      const next = position.get(String(product.id)) ?? null;
+
+      if ((product.displayOrder ?? null) !== next) {
+        product.displayOrder = next;
+        product.updatedAt = now;
+      }
+    }
+
+    this.persist();
   }
 
   getProductById(id) {

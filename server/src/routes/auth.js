@@ -5,7 +5,8 @@ import {
   requireAuth,
   requireRole,
   signToken,
-  normalizeRole
+  normalizeRole,
+  accountBlockedMessage
 } from '../middleware/auth.js';
 import { store } from '../db/store.js';
 
@@ -113,13 +114,28 @@ router.post('/register', async (req, res) => {
     // Check existing account
     const existingUser = await pool.query(
       `
-      SELECT id
+      SELECT id, terminated_at
       FROM users
       WHERE phone = $1
       LIMIT 1
       `,
       [cleanPhone]
     );
+
+    // Numbers / emails of accounts the admin terminated can't sign up again.
+    const removedEmail = email?.trim()
+      ? await pool.query(
+          'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND terminated_at IS NOT NULL LIMIT 1',
+          [email.trim()]
+        )
+      : { rowCount: 0 };
+
+    if (existingUser.rows[0]?.terminated_at || removedEmail.rowCount > 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'This account has been permanently removed from Bhook_Lgi.'
+      });
+    }
 
     if (existingUser.rows.length > 0) {
       return res.status(409).json({
@@ -160,6 +176,11 @@ router.post('/register', async (req, res) => {
     );
 
     const user = result.rows[0];
+
+    await pool.query(
+      'UPDATE users SET last_login_at = NOW(), last_seen_at = NOW() WHERE id = $1',
+      [user.id]
+    );
 
     const token = signToken({ id: user.id, role: user.role, kind: 'user' });
 
@@ -245,9 +266,10 @@ router.post('/login', async (req, res) => {
     // ---------- Customers & admin ----------
     const result = await pool.query(
       `
-      SELECT ${USER_COLUMNS}, password_hash
+      SELECT ${USER_COLUMNS}, password_hash, is_blocked, terminated_at
       FROM users
       WHERE phone = $1 OR LOWER(email) = LOWER($1)
+      ORDER BY (terminated_at IS NULL) DESC
       LIMIT 1
       `,
       [cleanIdentifier]
@@ -275,6 +297,21 @@ router.post('/login', async (req, res) => {
         error: 'Incorrect password.'
       });
     }
+
+    // Blocked or terminated by the admin
+    const blockedMessage = accountBlockedMessage(user);
+    if (blockedMessage) {
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_BLOCKED',
+        error: blockedMessage
+      });
+    }
+
+    await pool.query(
+      'UPDATE users SET last_login_at = NOW(), last_seen_at = NOW() WHERE id = $1',
+      [user.id]
+    );
 
     const token = signToken({ id: user.id, role: user.role, kind: 'user' });
 
@@ -328,7 +365,7 @@ router.get('/me', requireAuth, async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT ${USER_COLUMNS}
+      SELECT ${USER_COLUMNS}, is_blocked, terminated_at
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -343,6 +380,20 @@ router.get('/me', requireAuth, async (req, res) => {
       });
     }
 
+    const blockedMessage = accountBlockedMessage(result.rows[0]);
+    if (blockedMessage) {
+      return res.status(401).json({
+        success: false,
+        code: 'ACCOUNT_BLOCKED',
+        error: blockedMessage
+      });
+    }
+
+    await pool.query(
+      'UPDATE users SET last_seen_at = NOW() WHERE id = $1',
+      [req.user.userId]
+    );
+
     return res.json({
       success: true,
       user: formatUser(result.rows[0])
@@ -355,6 +406,27 @@ router.get('/me', requireAuth, async (req, res) => {
       success: false,
       error: 'Could not verify login.'
     });
+  }
+});
+
+
+// ==================================================
+// SIGN OUT — so the admin's "signed in" count stays correct
+// POST /api/auth/logout
+// ==================================================
+
+router.post('/logout', requireAuth, async (req, res) => {
+  try {
+    if (req.user.kind === 'user') {
+      await pool.query(
+        'UPDATE users SET last_logout_at = NOW(), last_seen_at = NULL WHERE id = $1',
+        [req.user.userId]
+      );
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    return res.json({ success: true });
   }
 });
 

@@ -19,7 +19,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useOrder } from '../../context/OrderContext';
 
-const HOSTEL_OPTIONS = ['GH1', 'GH3', 'GH4', 'GH11', 'GH12', 'BH1', 'BH2', 'Other'];
+const HOSTEL_OPTIONS = ['GH1', 'GH2', 'GH3', 'GH4', 'GH11', 'GS12', 'BH1', 'BH2', 'Other'];
 
 const inputClass =
   'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none focus:border-brand-yellow focus:bg-white';

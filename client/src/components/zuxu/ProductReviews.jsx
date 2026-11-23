@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Camera, MessageSquareHeart, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Camera, Clock, MessageSquareHeart, PenLine, Trash2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useOrder } from '../../context/OrderContext';
 import { PhotoStrip, Stars } from './ZuxuShared';
+import ReviewModal from './ReviewModal';
 
 /*
  * Reviews on a Zuxu product page.
@@ -10,7 +12,11 @@ import { PhotoStrip, Stars } from './ZuxuShared';
  * server); shows every photo they uploaded.
  */
 export default function ProductReviews({ productId, onSummary }) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthenticated } = useAuth();
+  const { myOrders = [] } = useOrder() || {};
+  // "orderId:productId" pairs this customer already reviewed
+  const [myReviewed, setMyReviewed] = useState(new Set());
+  const [reviewTarget, setReviewTarget] = useState(null);
   const [data, setData] = useState({ reviews: [], average: 0, count: 0 });
   const [loading, setLoading] = useState(true);
   const [withPhotosOnly, setWithPhotosOnly] = useState(false);
@@ -32,6 +38,42 @@ export default function ProductReviews({ productId, onSummary }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadMine = useCallback(async () => {
+    if (!isAuthenticated) {
+      setMyReviewed(new Set());
+      return;
+    }
+    try {
+      const res = await api.getMyReviews();
+      setMyReviewed(new Set((res.data || []).map((r) => `${r.orderId}:${r.productId}`)));
+    } catch {
+      // Writing reviews is optional
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    loadMine();
+  }, [loadMine]);
+
+  // Customers can review only AFTER their order with this product is
+  // delivered (the server checks this too). Everyone can read reviews.
+  const myStatus = useMemo(() => {
+    const withProduct = myOrders.filter((order) =>
+      (order.items || []).some((item) => item.productId === productId)
+    );
+
+    const delivered = withProduct.filter((order) => order.status === 'delivered');
+    const toReview = delivered.find((order) => !myReviewed.has(`${order.id}:${productId}`));
+
+    return {
+      toReview: toReview
+        ? { order: toReview, item: toReview.items.find((item) => item.productId === productId) }
+        : null,
+      reviewed: delivered.length > 0 && !toReview,
+      waiting: !toReview && withProduct.some((order) => !['delivered', 'cancelled'].includes(order.status)),
+    };
+  }, [myOrders, myReviewed, productId]);
 
   const removeReview = async (id) => {
     try {
@@ -82,6 +124,33 @@ export default function ProductReviews({ productId, onSummary }) {
         )}
       </div>
 
+      {/* Write a review: only after delivery */}
+      {isAuthenticated && myStatus.toReview && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3">
+          <p className="text-sm font-bold text-emerald-800">
+            Your order was delivered — how was it?
+          </p>
+          <button
+            type="button"
+            onClick={() => setReviewTarget(myStatus.toReview)}
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-black text-white hover:bg-pink-600"
+          >
+            <PenLine className="w-4 h-4" /> Rate & review
+          </button>
+        </div>
+      )}
+
+      {isAuthenticated && !myStatus.toReview && myStatus.waiting && (
+        <p className="flex items-center gap-2 rounded-2xl bg-yellow-50 border border-yellow-100 px-4 py-3 text-xs font-bold text-yellow-800">
+          <Clock className="w-4 h-4 shrink-0" />
+          You can review this after your order is delivered.
+        </p>
+      )}
+
+      {isAuthenticated && !myStatus.toReview && !myStatus.waiting && myStatus.reviewed && (
+        <p className="text-xs font-bold text-emerald-600">✓ You reviewed this — thank you!</p>
+      )}
+
       {/* All photos customers received */}
       {customerPhotos.length > 0 && (
         <div>
@@ -125,6 +194,18 @@ export default function ProductReviews({ productId, onSummary }) {
           </article>
         ))}
       </div>
+
+      {reviewTarget && (
+        <ReviewModal
+          order={reviewTarget.order}
+          item={reviewTarget.item}
+          onClose={() => setReviewTarget(null)}
+          onSaved={async () => {
+            setReviewTarget(null);
+            await Promise.all([load(), loadMine()]);
+          }}
+        />
+      )}
     </section>
   );
 }

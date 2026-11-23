@@ -458,7 +458,7 @@ router.get('/accounts', adminOnly, async (req, res) => {
     const today = await getTodayIST();
     const result = await pool.query(
       `SELECT s.id, s.login_id, s.full_name, s.mobile, s.email, s.role, s.hostel,
-              s.is_active, s.must_change_password, s.created_at,
+              s.is_active, s.must_change_password, s.created_at, s.can_deliver,
               EXISTS (
                 SELECT 1 FROM staff_shifts sh
                  WHERE sh.staff_id = s.id AND sh.work_date = $1::date
@@ -544,6 +544,31 @@ router.patch('/accounts/:id/active', adminOnly, async (req, res) => {
   } catch (error) {
     console.error('SET STAFF ACTIVE ERROR:', error);
     return res.status(500).json({ success: false, error: 'Could not update staff account.' });
+  }
+});
+
+
+// PATCH /api/staff/accounts/:id/can-deliver  { canDeliver: boolean }
+// A chef who also delivers orders (from the same chef panel).
+router.patch('/accounts/:id/can-deliver', adminOnly, async (req, res) => {
+  try {
+    const canDeliver = Boolean(req.body?.canDeliver);
+
+    const result = await pool.query(
+      `UPDATE staff_accounts SET can_deliver = $1, updated_at = NOW()
+        WHERE id = $2 AND role = 'CHEF'
+        RETURNING id, can_deliver`,
+      [canDeliver, req.params.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Chef account not found.' });
+    }
+
+    return res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('SET CHEF DELIVERY ERROR:', error);
+    return res.status(500).json({ success: false, error: 'Could not update the chef.' });
   }
 });
 
