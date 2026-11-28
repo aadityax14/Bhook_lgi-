@@ -7,6 +7,7 @@ import {
   Navigation,
   Phone,
 } from 'lucide-react';
+import OrderItemDetails from '../orders/OrderItemDetails';
 
 export default function DeliveryOrderCard({ order, onStatusChange }) {
 
@@ -138,23 +139,9 @@ export default function DeliveryOrderCard({ order, onStatusChange }) {
                       {item.quantity} × {item.productName}
                     </p>
 
-                    {item.variant && (
-                      <p className="text-sm text-gray-500 mt-1">
-                        Variant: {item.variant}
-                      </p>
-                    )}
-
-                    {item.spiceLevel && (
-                      <p className="text-sm text-gray-500">
-                        Spice: {item.spiceLevel}
-                      </p>
-                    )}
-
-                    {item.addons && (
-                      <p className="text-sm text-gray-500">
-                        Add-ons: {item.addons}
-                      </p>
-                    )}
+                    {/* Size, spice, extras, notes (add-ons are objects:
+                        printing them directly crashed this screen) */}
+                    <OrderItemDetails item={item} compact />
 
                   </div>
 

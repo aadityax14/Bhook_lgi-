@@ -214,6 +214,19 @@ export default function App() {
     loadProducts();
   }, [loadProducts]);
 
+  // Star rating of every product (shown on the menu cards)
+  const [ratings, setRatings] = useState({});
+
+  useEffect(() => {
+    api.getReviewSummary()
+      .then((res) => {
+        if (res?.data && typeof res.data === 'object') setRatings(res.data);
+      })
+      .catch(() => {
+        // Ratings are optional
+      });
+  }, [selectedProduct]);
+
   // ==========================================================
   // ZUXU NAVIGATION
   // ==========================================================
@@ -435,6 +448,7 @@ export default function App() {
                 <ProductCard
                   key={product.id}
                   product={product}
+                  rating={ratings[product.id]}
                   onSelectProduct={(p) => setSelectedProduct(p)}
                   onQuickAdd={handleQuickAdd}
                 />
@@ -549,6 +563,7 @@ export default function App() {
             }}
             onOpenCart={() => setIsCartOpen(true)}
             onOpenZuxu={handleExploreZuxu}
+            isZuxuActive={isZuxuView && !isAdminView}
           />
 
         </div>

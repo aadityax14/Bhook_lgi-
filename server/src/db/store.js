@@ -379,6 +379,7 @@ class DataStore {
       customRequests: [],
       reviews: [],
       banners: null,
+      trackingAd: null,
       settings: { ...DEFAULT_SETTINGS },
       earningsArchive: {}
     };
@@ -455,6 +456,12 @@ this.data = {
   banners: Array.isArray(savedData.banners)
     ? savedData.banners
     : null,
+
+  // Zuxu advertisement above order tracking (null = app default)
+  trackingAd:
+    savedData.trackingAd && typeof savedData.trackingAd === 'object'
+      ? savedData.trackingAd
+      : null,
 
   // Delivery & packing charges set by the admin
   settings: {
@@ -1894,6 +1901,17 @@ if (product.isActive === undefined) {
     this.data.banners = slides;
     this.persist();
     return this.data.banners;
+  }
+
+  // Zuxu ad above the customer's order tracking (null = app default)
+  getTrackingAd() {
+    return this.data.trackingAd || null;
+  }
+
+  setTrackingAd(ad) {
+    this.data.trackingAd = ad;
+    this.persist();
+    return this.data.trackingAd;
   }
 
   // Update name / phone on a customer's orders that are still

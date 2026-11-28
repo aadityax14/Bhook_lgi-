@@ -72,7 +72,9 @@ export default function KitchenPlan({ products, onSaved, showToast }) {
       const res = await api.saveKitchenPlan(assignments);
       setDrafts({});
       onSaved?.(res.data);
-      showToast?.('success', 'Kitchen plan saved ✓ New orders go to these chefs');
+      showToast?.('success', res?.rerouted > 0
+        ? `Kitchen plan saved ✓ ${res.rerouted} waiting order${res.rerouted === 1 ? '' : 's'} moved to the new chef`
+        : 'Kitchen plan saved ✓ New orders go to these chefs');
     } catch (error) {
       showToast?.('error', error.message || 'Could not save the kitchen plan');
     } finally {
@@ -186,7 +188,9 @@ export default function KitchenPlan({ products, onSaved, showToast }) {
               {unplanned > 0
                 ? `${unplanned} item${unplanned === 1 ? '' : 's'} with no chef — any chef on duty can make ${unplanned === 1 ? 'it' : 'them'}.`
                 : 'Every item has a chef.'}{' '}
-              If a planned chef isn't on duty, their items go to any chef on duty.
+              An order goes only to its planned chef (items with no chef in that order go to them too).
+              If the planned chef isn't on duty, the order is open to every chef on duty — and moves to
+              them as soon as you put them on duty, if nobody accepted it yet.
             </p>
           </div>
 

@@ -11,7 +11,9 @@ import ReviewModal from './ReviewModal';
  * Written only by customers who received the product (checked on the
  * server); shows every photo they uploaded.
  */
-export default function ProductReviews({ productId, onSummary }) {
+// limit: show only the first N reviews with a "See all" button
+// (used near the top of the product page).
+export default function ProductReviews({ productId, onSummary, limit = 0 }) {
   const { isAdmin, isAuthenticated } = useAuth();
   const { myOrders = [] } = useOrder() || {};
   // "orderId:productId" pairs this customer already reviewed
@@ -20,6 +22,7 @@ export default function ProductReviews({ productId, onSummary }) {
   const [data, setData] = useState({ reviews: [], average: 0, count: 0 });
   const [loading, setLoading] = useState(true);
   const [withPhotosOnly, setWithPhotosOnly] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -85,7 +88,11 @@ export default function ProductReviews({ productId, onSummary }) {
   };
 
   const customerPhotos = data.reviews.flatMap((r) => r.images || []);
-  const shown = withPhotosOnly ? data.reviews.filter((r) => r.images?.length) : data.reviews;
+  const matching = withPhotosOnly ? data.reviews.filter((r) => r.images?.length) : data.reviews;
+  // Reviews with photos first, so customers see real pictures right away.
+  const ordered = [...matching].sort((a, b) => (b.images?.length ? 1 : 0) - (a.images?.length ? 1 : 0));
+  const shown = limit > 0 && !showAll ? ordered.slice(0, limit) : ordered;
+  const hiddenCount = ordered.length - shown.length;
 
   return (
     <section className="border-t px-4 sm:px-7 py-6 space-y-4">
@@ -194,6 +201,16 @@ export default function ProductReviews({ productId, onSummary }) {
           </article>
         ))}
       </div>
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full rounded-2xl border border-gray-200 py-3 text-sm font-black text-gray-800 hover:bg-gray-50"
+        >
+          See all {ordered.length} reviews
+        </button>
+      )}
 
       {reviewTarget && (
         <ReviewModal

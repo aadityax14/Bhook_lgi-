@@ -4,6 +4,7 @@ import { store } from '../db/store.js';
 import { requireRole } from '../middleware/auth.js';
 import { pool } from '../db/postgres.js';
 import { saveImage, deleteImages, isUploadedImageUrl, UploadError } from '../services/uploads.js';
+import { replanWaitingOrders } from '../services/kitchenPlan.js';
 
 const router = express.Router();
 
@@ -328,7 +329,20 @@ router.put('/kitchen-plan', adminOnly, async (req, res) => {
 
     store.setKitchenPlan(clean);
 
-    res.json({ success: true, message: 'Kitchen plan saved', data: store.getProducts() });
+    // New orders nobody has accepted yet follow the new plan too.
+    const rerouted = await replanWaitingOrders().catch((error) => {
+      console.error('REPLAN ORDERS ERROR:', error);
+      return 0;
+    });
+
+    res.json({
+      success: true,
+      message: rerouted > 0
+        ? `Kitchen plan saved. ${rerouted} waiting order${rerouted === 1 ? '' : 's'} sent to the new chef${rerouted === 1 ? '' : 's'}.`
+        : 'Kitchen plan saved',
+      rerouted,
+      data: store.getProducts()
+    });
   } catch (err) {
     console.error('KITCHEN PLAN ERROR:', err);
     res.status(500).json({ success: false, error: 'Could not save the kitchen plan' });

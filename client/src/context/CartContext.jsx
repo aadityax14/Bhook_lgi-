@@ -33,7 +33,12 @@ export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {
     try {
       const saved = localStorage.getItem('bhook_cart');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // A cart saved by an older version of the app can have another
+      // shape: keep only items we can still show, never crash on it.
+      return Array.isArray(parsed)
+        ? parsed.filter(item => item && typeof item === 'object' && item.cartItemId && item.productId)
+        : [];
     } catch {
       return [];
     }

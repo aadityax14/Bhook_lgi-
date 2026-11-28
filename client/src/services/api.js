@@ -1,4 +1,21 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Where the server is:
+//   1. VITE_API_URL (set this when the site is deployed)
+//   2. otherwise the same computer that served this page, port 5000.
+//      Before, this was always "localhost", so on any phone opening
+//      the site by its network address (192.168.x.x) every request
+//      went to the phone itself and nothing loaded.
+const API_BASE = (() => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  try {
+    const { protocol, hostname } = window.location;
+    if (hostname && protocol.startsWith('http')) {
+      return `${protocol}//${hostname}:5000/api`;
+    }
+  } catch {
+    // fall through
+  }
+  return 'http://localhost:5000/api';
+})();
 
 // Uploaded photos are saved by the server as "/api/uploads/<file>".
 // Turn that into a full URL on the API's host.
@@ -297,6 +314,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ image }),
     }),
+
+  // Zuxu ad above order tracking (admin edits it)
+  getTrackingAd: () => fetchJSON('/banners/tracking-ad'),
+  saveTrackingAd: (ad) =>
+    fetchJSON('/banners/tracking-ad', {
+      method: 'PUT',
+      body: JSON.stringify(ad),
+    }),
+  resetTrackingAd: () => fetchJSON('/banners/tracking-ad', { method: 'DELETE' }),
 
   // Staff applications (public)
   submitStaffApplication: (application) =>

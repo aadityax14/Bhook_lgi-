@@ -2,7 +2,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Clock, Phone, MapPin, ArrowLeft, Star } from 'lucide-react';
 import { useOrder } from '../../context/OrderContext';
-import { api } from '../../services/api';
+import { api, resolveMediaUrl } from '../../services/api';
+import { DEFAULT_TRACKING_AD, withTrackingAdDefaults } from '../../data/trackingAd';
 import ReviewModal from '../zuxu/ReviewModal';
 import { PhotoStrip, formatDate } from '../zuxu/ZuxuShared';
 
@@ -93,6 +94,27 @@ export default function OrderTrackingView({
   // Slider state
   const sliderRef = useRef(null);
   const [activeSlide, setActiveSlide] = useState(0);
+
+  // Zuxu ad (text + photos set by the admin)
+  const [trackingAd, setTrackingAd] = useState(DEFAULT_TRACKING_AD);
+  const [adPhoto, setAdPhoto] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getTrackingAd()
+      .then((res) => {
+        if (!cancelled) setTrackingAd(withTrackingAdDefaults(res?.data));
+      })
+      .catch(() => {
+        // Keep the default ad
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const showAd = trackingAd.enabled !== false;
+  const adImages = trackingAd.images?.length ? trackingAd.images : DEFAULT_TRACKING_AD.images;
 
   // Detect currently visible slide
   const handleSliderScroll = () => {
@@ -225,7 +247,8 @@ export default function OrderTrackingView({
           }}
         >
 
-          {/* SLIDE 1 - ZUXU ADVERTISEMENT */}
+          {/* SLIDE 1 - ZUXU ADVERTISEMENT (admin edits it: Admin → Banners) */}
+          {showAd && (
           <div className="w-full flex-none snap-center">
 
             <div className="relative overflow-hidden min-h-[220px] bg-gradient-to-br from-pink-50 via-white to-rose-100 rounded-3xl p-5 sm:p-6 border border-pink-100 shadow-soft">
@@ -234,41 +257,68 @@ export default function OrderTrackingView({
 
               <div className="relative flex items-center gap-3 sm:gap-5">
 
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
 
-                  <span className="inline-block px-2.5 py-1 rounded-full bg-pink-100 text-pink-700 text-[9px] sm:text-[10px] font-black tracking-wide mb-3">
-                    🎁 HANDMADE WITH LOVE
-                  </span>
+                  {trackingAd.badge && (
+                    <span className="inline-block px-2.5 py-1 rounded-full bg-pink-100 text-pink-700 text-[9px] sm:text-[10px] font-black tracking-wide mb-3">
+                      {trackingAd.badge}
+                    </span>
+                  )}
 
                   <h2 className="text-xl sm:text-2xl font-black text-gray-900">
-                    Make Someone Smile ❤️
+                    {trackingAd.title}
                   </h2>
 
                   <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
-                    Discover handmade gifts, crochet, rings and cute accessories.
+                    {trackingAd.subtitle}
                   </p>
 
                   <button
                     onClick={onExploreZuxu}
                     className="mt-4 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-xs font-black hover:bg-gray-800 active:scale-95 transition-all"
                   >
-                    Explore Zuxu →
+                    {trackingAd.buttonText}
                   </button>
 
                 </div>
 
-                {/* ZUXU LOGO */}
-                <div className="shrink-0 w-24 h-24 sm:w-32 sm:h-32 bg-white rounded-2xl border border-pink-100 shadow-sm overflow-hidden flex items-center justify-center">
+                {/* PRODUCT PHOTO (tap the small ones to switch) */}
+                <button
+                  type="button"
+                  onClick={onExploreZuxu}
+                  className="shrink-0 w-24 h-24 sm:w-32 sm:h-32 bg-white rounded-2xl border border-pink-100 shadow-sm overflow-hidden flex items-center justify-center"
+                  aria-label="Open Zuxu"
+                >
 
                   <img
-                    src="/zuxu.png"
+                    src={resolveMediaUrl(adImages[adPhoto] || adImages[0]) || adImages[0]}
                     alt="Zuxu Handmade Gifts"
-                    className="w-full h-full object-contain"
+                    className={`w-full h-full ${
+                      (adImages[adPhoto] || adImages[0]) === '/zuxu.png' ? 'object-contain' : 'object-cover'
+                    }`}
                   />
 
-                </div>
+                </button>
 
               </div>
+
+              {adImages.length > 1 && (
+                <div className="relative mt-3 flex justify-end gap-2">
+                  {adImages.map((src, index) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => setAdPhoto(index)}
+                      className={`w-11 h-11 rounded-xl overflow-hidden border-2 bg-white ${
+                        index === adPhoto ? 'border-pink-400' : 'border-transparent opacity-80'
+                      }`}
+                      aria-label={`Show photo ${index + 1}`}
+                    >
+                      <img src={resolveMediaUrl(src) || src} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-4 text-center text-[9px] font-bold text-pink-500">
                 ADVERTISEMENT
@@ -276,6 +326,7 @@ export default function OrderTrackingView({
 
             </div>
           </div>
+          )}
 
           {/* SLIDE 2 - LIVE ORDER STATUS */}
           <div className="w-full flex-none snap-center">
@@ -374,8 +425,8 @@ export default function OrderTrackingView({
 
         </div>
 
-        {/* CLICKABLE SLIDER DOTS */}
-        <div className="flex justify-center items-center gap-2 mt-3">
+        {/* CLICKABLE SLIDER DOTS (only when the ad is shown) */}
+        <div className={`${showAd ? 'flex' : 'hidden'} justify-center items-center gap-2 mt-3`}>
 
           {[0, 1].map((index) => (
 
