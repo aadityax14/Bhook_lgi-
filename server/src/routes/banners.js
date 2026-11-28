@@ -114,6 +114,53 @@ router.put('/', adminOnly, (req, res) => {
   res.json({ success: true, data: store.setBanners(cleaned) });
 });
 
+// =============================================================
+// ZUXU AD ABOVE ORDER TRACKING
+// Text + up to 4 product photos, set by the admin.
+// =============================================================
+
+const MAX_AD_IMAGES = 4;
+const AD_TEXT_LIMITS = { badge: 40, title: 60, subtitle: 160, buttonText: 30 };
+
+// GET /api/banners/tracking-ad  (public) → ad or null (= app default)
+router.get('/tracking-ad', (req, res) => {
+  res.json({ success: true, data: store.getTrackingAd() });
+});
+
+// PUT /api/banners/tracking-ad  { enabled, badge, title, subtitle, buttonText, images }  (admin)
+router.put('/tracking-ad', adminOnly, (req, res) => {
+  const body = req.body || {};
+  const ad = { enabled: body.enabled !== false };
+
+  for (const [field, max] of Object.entries(AD_TEXT_LIMITS)) {
+    ad[field] = String(body[field] ?? '').trim().slice(0, max);
+  }
+
+  const images = Array.isArray(body.images) ? body.images : [];
+  if (images.length > MAX_AD_IMAGES) {
+    return res.status(400).json({ success: false, error: `Use at most ${MAX_AD_IMAGES} photos.` });
+  }
+
+  ad.images = [];
+  for (const [index, value] of images.entries()) {
+    const image = cleanImage(value);
+    if (image === null) {
+      return res.status(400).json({ success: false, error: `Photo ${index + 1}: please upload it again.` });
+    }
+    if (image) ad.images.push(image);
+  }
+
+  ad.updatedAt = new Date().toISOString();
+
+  res.json({ success: true, data: store.setTrackingAd(ad) });
+});
+
+// DELETE /api/banners/tracking-ad  (admin) → back to the app default
+router.delete('/tracking-ad', adminOnly, (req, res) => {
+  store.setTrackingAd(null);
+  res.json({ success: true, data: null });
+});
+
 // DELETE /api/banners  (admin) → back to app defaults
 router.delete('/', adminOnly, (req, res) => {
   store.setBanners(null);

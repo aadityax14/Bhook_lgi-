@@ -8,6 +8,7 @@ import {
 import { priceOrder } from '../services/orderPricing.js';
 import { getKitchenHostels } from '../services/fees.js';
 import { pool } from '../db/postgres.js';
+import { planKitchen } from '../services/kitchenPlan.js';
 
 const router = express.Router();
 
@@ -86,49 +87,6 @@ async function chefCanDeliver(user) {
     [user.userId]
   );
   return Boolean(result.rows[0]?.can_deliver);
-}
-
-// Kitchen plan for a new food order: each item goes to the chef the
-// admin planned for it, if that chef is on duty today.
-async function planKitchen(items) {
-  const plannedIds = [...new Set(
-    items.map((item) => store.getProductById(item.productId)?.chefId).filter(Boolean).map(String)
-  )];
-
-  if (plannedIds.length === 0) {
-    return { items, chefs: [] };
-  }
-
-  const result = await pool.query(
-    `SELECT s.id::text AS id, s.login_id, s.full_name
-       FROM staff_accounts s
-       JOIN staff_shifts sh
-         ON sh.staff_id = s.id
-        AND sh.work_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
-      WHERE s.role = 'CHEF' AND s.is_active = TRUE AND s.id::text = ANY($1::text[])`,
-    [plannedIds]
-  );
-
-  const onDuty = new Map(result.rows.map((row) => [row.id, row]));
-
-  const plannedItems = items.map((item) => {
-    const chefId = String(store.getProductById(item.productId)?.chefId || '');
-    const chef = onDuty.get(chefId);
-    return chef
-      ? { ...item, chefId: chef.id, chefName: chef.full_name, chefLoginId: chef.login_id }
-      : { ...item, chefId: null };
-  });
-
-  const usedIds = new Set(plannedItems.map((item) => item.chefId).filter(Boolean));
-
-  return {
-    items: plannedItems,
-    chefs: [...usedIds].map((id) => ({
-      id,
-      name: onDuty.get(id).full_name,
-      loginId: onDuty.get(id).login_id
-    }))
-  };
 }
 
 // GET /api/orders (Admin / on-duty kitchen & delivery staff)
@@ -448,9 +406,16 @@ router.post('/', shopper, async (req, res) => {
     // ============================================
 
     // Kitchen plan: send each item to the chef the admin chose for it.
-    const kitchen = orderType === 'food'
-      ? await planKitchen(priced.items)
-      : { items: priced.items, chefs: [] };
+    // (A problem reading the duty list must never block the order:
+    // it then goes to every chef on duty.)
+    let kitchen = { items: priced.items, chefs: [] };
+    if (orderType === 'food') {
+      try {
+        kitchen = await planKitchen(priced.items);
+      } catch (planError) {
+        console.error('KITCHEN PLAN ERROR (order goes to every chef):', planError);
+      }
+    }
 
     let createdOrder = store.createOrder({
       userId: req.user.userId,

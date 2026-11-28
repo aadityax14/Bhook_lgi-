@@ -8,6 +8,14 @@ import HostelAvailabilityPicker from './HostelAvailabilityPicker';
 import UsersManager from './UsersManager';
 import MenuOrderManager from './MenuOrderManager';
 import KitchenPlan from './KitchenPlan';
+import TrackingAdManager from './TrackingAdManager';
+import OrderItemDetails from '../orders/OrderItemDetails';
+import OrderStatusTabs, {
+  ORDER_BUCKETS,
+  countOrders,
+  filterOrders,
+  sortForFilter,
+} from '../orders/OrderStatusTabs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -474,27 +482,18 @@ const normalProducts = useMemo(() => {
   );
 
 
-  const placedOrders = orders.filter(
-    (order) => order.status === 'placed'
-  );
+  // Orders tab: which step of the pipeline is shown.
+  // Starts on "To accept" when new orders are waiting.
+  const [orderFilter, setOrderFilter] = useState('active');
+  const pickedOrderFilter = useRef(false);
 
+  useEffect(() => {
+    if (pickedOrderFilter.current || orders.length === 0) return;
+    pickedOrderFilter.current = true;
+    if (countOrders(orders, 'to_accept') > 0) setOrderFilter('to_accept');
+  }, [orders]);
 
-  const preparingOrders = orders.filter(
-    (order) =>
-      order.status === 'accepted' ||
-      order.status === 'preparing'
-  );
-
-
-  const readyOrders = orders.filter(
-    (order) => order.status === 'ready' || order.status === 'ready_to_dispatch'
-  );
-
-
-  const deliveryOrders = orders.filter(
-    (order) =>
-      order.status === 'out_for_delivery'
-  );
+  const shownOrders = sortForFilter(filterOrders(orders, orderFilter), orderFilter);
 
 
   // ==========================================================
@@ -1527,47 +1526,42 @@ if (order.status === 'delivered') {
           {order.items?.map(
             (item, index) => (
               <div
-                key={
-                  item.productId ||
-                  index
-                }
-                className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"
+                key={`${item.productId || 'item'}-${index}`}
+                className="bg-gray-50 rounded-xl px-3 py-2.5"
               >
 
-                <div>
+                <div className="flex items-start justify-between gap-3">
 
-                  <span className="font-bold">
-                    {item.quantity} ×{' '}
-                    {item.productName ||
-                      item.name ||
-                      'Item'}
+                  <div className="min-w-0">
+
+                    <span className="font-bold">
+                      {item.quantity} ×{' '}
+                      {item.productName ||
+                        item.name ||
+                        'Item'}
+                    </span>
+
+                    {item.chefName && !order.assignedChefId && (
+                      <span className="text-[11px] font-bold text-yellow-700 ml-2">
+                        👨‍🍳 {item.chefName}
+                      </span>
+                    )}
+
+                  </div>
+
+                  <span className="font-bold shrink-0">
+                    ₹
+                    {Number(
+                      item.itemTotal ??
+                      Number(item.priceAtOrder ?? item.price ?? 0) * Number(item.quantity || 0)
+                    ).toFixed(0)}
                   </span>
-
-                  {item.variant && (
-                    <span className="text-xs text-gray-500 ml-2">
-                      {item.variant}
-                    </span>
-                  )}
-
-                  {item.chefName && !order.assignedChefId && (
-                    <span className="text-[11px] font-bold text-yellow-700 ml-2">
-                      👨‍🍳 {item.chefName}
-                    </span>
-                  )}
 
                 </div>
 
-                <span className="font-bold">
-                  ₹
-                  {(
-                    Number(
-                      item.price || 0
-                    ) *
-                    Number(
-                      item.quantity || 0
-                    )
-                  ).toFixed(0)}
-                </span>
+                {/* Everything the customer picked: size, spice,
+                    extras, Zuxu choices, note, photos */}
+                <OrderItemDetails item={item} />
 
               </div>
             )
@@ -2230,95 +2224,39 @@ if (order.status === 'delivered') {
             <OrderHistoryControls orders={orders} onDone={fetchOrders} />
 
 
-            {/* STATS */}
+            {/* ORDER PIPELINE: tap a box to see only those orders.
+                To accept → Preparing → Ready → On the way → Completed */}
 
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-
-              <div className="bg-white rounded-2xl border p-4">
-
-                <p className="text-xs text-gray-500 font-bold">
-                  NEW
-                </p>
-
-                <p className="text-2xl font-black mt-1">
-                  {placedOrders.length}
-                </p>
-
-              </div>
+            <OrderStatusTabs
+              orders={orders}
+              value={orderFilter}
+              onChange={setOrderFilter}
+            />
 
 
-              <div className="bg-white rounded-2xl border p-4">
-
-                <p className="text-xs text-gray-500 font-bold">
-                  PREPARING
-                </p>
-
-                <p className="text-2xl font-black mt-1">
-                  {preparingOrders.length}
-                </p>
-
-              </div>
-
-
-              <div className="bg-white rounded-2xl border p-4">
-
-                <p className="text-xs text-gray-500 font-bold">
-                  READY
-                </p>
-
-                <p className="text-2xl font-black mt-1">
-                  {readyOrders.length}
-                </p>
-
-              </div>
-
-
-              <div className="bg-white rounded-2xl border p-4">
-
-                <p className="text-xs text-gray-500 font-bold">
-                  DELIVERY
-                </p>
-
-                <p className="text-2xl font-black mt-1">
-                  {deliveryOrders.length}
-                </p>
-
-              </div>
-
-
-              <div className="bg-brand-yellow rounded-2xl border border-yellow-300 p-4 col-span-2 lg:col-span-1">
-
-                <p className="text-xs text-black/60 font-bold">
-                  ACTIVE
-                </p>
-
-                <p className="text-2xl font-black mt-1">
-                  {activeOrders.length}
-                </p>
-
-              </div>
-
-            </div>
-
-
-            {/* ACTIVE ORDERS */}
+            {/* ORDERS IN THE CHOSEN STEP */}
 
             <div>
 
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-wrap items-end justify-between gap-2 mb-4">
 
                 <div>
 
-                 <h2 className="text-xl font-black">
-                  All Orders
-                </h2>
+                  <h2 className="text-xl font-black">
+                    {orderFilter === 'active'
+                      ? 'All active orders'
+                      : orderFilter === 'all'
+                      ? 'Every order'
+                      : ORDER_BUCKETS[orderFilter]?.label}
+                    <span className="ml-2 text-base font-bold text-gray-400">
+                      {shownOrders.length}
+                    </span>
+                  </h2>
 
                   <p className="text-sm text-gray-500">
-                        View and manage every order, including delivered and cancelled orders.
-                  </p>
-
-                  <p className="text-sm text-gray-500">
-                    Manage your incoming orders
+                    {['completed', 'cancelled', 'all'].includes(orderFilter)
+                      ? 'Newest first.'
+                      : 'Oldest first — serve these in this order.'}
                   </p>
 
                 </div>
@@ -2326,7 +2264,7 @@ if (order.status === 'delivered') {
               </div>
 
 
-{orders.length === 0 ? (
+{shownOrders.length === 0 ? (
 
   <div className="bg-white rounded-3xl border p-10 text-center">
 
@@ -2336,27 +2274,22 @@ if (order.status === 'delivered') {
     />
 
     <h3 className="font-black text-lg mt-3">
-      No orders yet
+      {orders.length === 0 ? 'No orders yet' : 'Nothing here'}
     </h3>
 
     <p className="text-sm text-gray-500 mt-1">
-      New customer orders will appear here.
+      {orders.length === 0
+        ? 'New customer orders will appear here.'
+        : 'No orders in this step right now. Tap another box above.'}
     </p>
 
   </div>
 
 ) : (
 
-  <div className="space-y-4">
+  <div className="grid gap-4 xl:grid-cols-2">
 
-    {orders
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt) -
-          new Date(a.createdAt)
-      )
-      .map(renderOrderCard)}
+    {shownOrders.map(renderOrderCard)}
 
   </div>
 
@@ -3010,7 +2943,11 @@ if (order.status === 'delivered') {
 
         {/* HOMEPAGE SLIDES TAB */}
         {activeTab === 'banners' && (
-          <BannerManager />
+          <div className="space-y-10">
+            <BannerManager />
+            {/* Zuxu ad shown above the customer's order tracking */}
+            <TrackingAdManager />
+          </div>
         )}
 
         {/* ZUXU CUSTOM ORDERS TAB */}

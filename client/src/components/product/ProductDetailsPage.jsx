@@ -315,6 +315,13 @@ export default function ProductDetailsPage({ product, onClose, onOpenCart }) {
             </div>
           </section>
 
+          {/* ================= REVIEWS =================
+              Right under the product (before the options) so customers
+              see ratings and real customer photos first. */}
+          <section ref={reviewsRef} className="bg-white rounded-3xl border border-gray-100 shadow-soft overflow-hidden">
+            <ProductReviews productId={product.id} onSummary={setRating} limit={2} />
+          </section>
+
           {/* ================= SIZE ================= */}
           {variants.length > 1 && (
             <section className="bg-white rounded-3xl border border-gray-100 shadow-soft p-5">
@@ -404,10 +411,6 @@ export default function ProductDetailsPage({ product, onClose, onOpenCart }) {
             </section>
           )}
 
-          {/* ================= REVIEWS ================= */}
-          <section ref={reviewsRef} className="bg-white rounded-3xl border border-gray-100 shadow-soft overflow-hidden">
-            <ProductReviews productId={product.id} onSummary={setRating} />
-          </section>
         </div>
       </div>
 

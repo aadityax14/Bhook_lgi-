@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db/postgres.js';
 import { store } from '../db/store.js';
+import { replanWaitingOrders } from '../services/kitchenPlan.js';
 import {
   requireAuth,
   requireRole,
@@ -637,6 +638,11 @@ router.put('/duty/today', adminOnly, async (req, res) => {
       'SELECT staff_id FROM staff_shifts WHERE work_date = $1::date',
       [today]
     );
+
+    // A planned chef who just came on duty gets their waiting orders.
+    await replanWaitingOrders().catch((error) => {
+      console.error('REPLAN ORDERS ERROR:', error);
+    });
 
     return res.json({
       success: true,

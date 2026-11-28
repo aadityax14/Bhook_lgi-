@@ -110,7 +110,7 @@ export default function CartDrawer({ isOpen, onClose, onProceedToCheckout }) {
                     )}
                     {item.addons && item.addons.length > 0 && (
                       <div className="text-[10px] text-gray-600 font-medium">
-                        + {item.addons.join(', ')}
+                        + {item.addons.map(addon => (typeof addon === 'string' ? addon : addon?.name)).filter(Boolean).join(', ')}
                       </div>
                     )}
                   </div>

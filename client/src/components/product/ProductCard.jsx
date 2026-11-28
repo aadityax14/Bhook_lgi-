@@ -1,9 +1,10 @@
 import React from 'react';
-import { Plus, Flame, Ban, MapPinOff } from 'lucide-react';
+import { Plus, Flame, Ban, MapPinOff, Star } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isAvailableInHostel, availableHostelsOf } from '../../utils/availability';
 
-export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
+// rating: { average, count } from customer reviews (optional)
+export default function ProductCard({ product, rating, onSelectProduct, onQuickAdd }) {
   const { user } = useAuth();
 
   const inStock = product.isAvailable !== false;
@@ -94,6 +95,17 @@ export default function ProductCard({ product, onSelectProduct, onQuickAdd }) {
               {product.name}
             </h3>
           </div>
+          {/* Customer rating → tap the card to read reviews & see photos */}
+          {rating?.count > 0 && (
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[11px] font-black text-white">
+                <Star className="w-3 h-3 fill-white" /> {Number(rating.average).toFixed(1)}
+              </span>
+              <span className="text-[11px] font-semibold text-gray-500 underline decoration-dotted">
+                {rating.count} review{rating.count === 1 ? '' : 's'}
+              </span>
+            </div>
+          )}
           <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-3">
             {product.description}
           </p>

@@ -15,11 +15,16 @@ export default function BottomNav({
   activeTab,
   setActiveTab,
   onOpenCart,
-  onOpenZuxu
+  onOpenZuxu,
+  // true while the Zuxu shop is open → Zuxu tab glows baby pink
+  isZuxuActive = false
 }) {
   const { itemsCount } = useCart();
   const { activeOrder } = useOrder();
   const { isAdminView, setIsAdminView } = useAuth();
+
+  // Only one tab is highlighted: Zuxu when its shop is open.
+  const isOn = (tab) => !isAdminView && !isZuxuActive && activeTab === tab;
 
   const isOrderActive =
     activeOrder &&
@@ -43,14 +48,14 @@ export default function BottomNav({
             setActiveTab('home');
           }}
           className={`flex flex-1 flex-col items-center py-1 px-2 rounded-2xl transition-all ${
-            !isAdminView && activeTab === 'home'
+            isOn('home')
               ? 'text-brand-black font-extrabold scale-105'
               : 'text-gray-400 font-medium'
           }`}
         >
           <Home
             className={`w-5 h-5 ${
-              !isAdminView && activeTab === 'home'
+              isOn('home')
                 ? 'text-brand-yellow stroke-[2.5]'
                 : ''
             }`}
@@ -69,14 +74,14 @@ export default function BottomNav({
             setActiveTab('menu');
           }}
           className={`flex flex-1 flex-col items-center py-1 px-2 rounded-2xl transition-all ${
-            !isAdminView && activeTab === 'menu'
+            isOn('menu')
               ? 'text-brand-black font-extrabold scale-105'
               : 'text-gray-400 font-medium'
           }`}
         >
           <UtensilsCrossed
             className={`w-5 h-5 ${
-              !isAdminView && activeTab === 'menu'
+              isOn('menu')
                 ? 'text-brand-yellow stroke-[2.5]'
                 : ''
             }`}
@@ -97,11 +102,22 @@ export default function BottomNav({
               onOpenZuxu();
             }
           }}
-          className="relative flex flex-1 flex-col items-center py-1 px-2 rounded-2xl text-gray-400 font-medium hover:text-gray-600 transition-all"
+          aria-current={isZuxuActive ? 'page' : undefined}
+          className={`relative flex flex-1 flex-col items-center py-1 px-2 rounded-2xl transition-all ${
+            isZuxuActive
+              ? 'text-pink-500 font-extrabold scale-105 bg-pink-100/70 shadow-[0_0_14px_rgba(248,180,200,0.9)]'
+              : 'text-gray-400 font-medium hover:text-pink-400'
+          }`}
         >
           <div className="relative">
 
-            <Gift className="w-5 h-5" />
+            <Gift
+              className={`w-5 h-5 ${
+                isZuxuActive
+                  ? 'text-pink-400 stroke-[2.5] drop-shadow-[0_0_6px_rgba(244,114,182,0.8)]'
+                  : ''
+              }`}
+            />
 
             <span className="absolute -top-2 -right-2 text-[8px]">
               ✨
@@ -122,7 +138,7 @@ export default function BottomNav({
             setActiveTab('orders');
           }}
           className={`relative flex flex-1 flex-col items-center py-1 px-2 rounded-2xl transition-all ${
-            !isAdminView && activeTab === 'orders'
+            isOn('orders')
               ? 'text-brand-black font-extrabold scale-105'
               : 'text-gray-400 font-medium'
           }`}
@@ -131,7 +147,7 @@ export default function BottomNav({
 
             <Clock
               className={`w-5 h-5 ${
-                !isAdminView && activeTab === 'orders'
+                isOn('orders')
                   ? 'text-brand-yellow stroke-[2.5]'
                   : ''
               }`}

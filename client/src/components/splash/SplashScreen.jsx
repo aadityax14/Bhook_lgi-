@@ -1,10 +1,22 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export default function SplashScreen({ onFinish }) {
   const [phase, setPhase] = useState('enter');
 
+  // The parent passes a new onFinish on every render (it re-renders
+  // every few seconds while polling orders/notifications). Keep the
+  // latest one in a ref so the timers below start ONCE — otherwise
+  // each re-render restarted them and the splash could never close.
+  const onFinishRef = useRef(onFinish);
   useEffect(() => {
+    onFinishRef.current = onFinish;
+  });
+
+  useEffect(() => {
+    // Safety net: never keep the app hidden for more than 4 seconds.
+    const hardStop = setTimeout(() => onFinishRef.current?.(), 4000);
+
     // Logo shoots in
     const logoTimer = setTimeout(() => {
       setPhase('settle');
@@ -16,20 +28,23 @@ export default function SplashScreen({ onFinish }) {
     }, 900);
 
     // Open app
+    let exitTimer;
     const finishTimer = setTimeout(() => {
       setPhase('exit');
 
-      setTimeout(() => {
-        onFinish();
+      exitTimer = setTimeout(() => {
+        onFinishRef.current?.();
       }, 350);
     }, 2200);
 
     return () => {
+      clearTimeout(hardStop);
       clearTimeout(logoTimer);
       clearTimeout(textTimer);
       clearTimeout(finishTimer);
+      clearTimeout(exitTimer);
     };
-  }, [onFinish]);
+  }, []);
 
   return (
     <div
